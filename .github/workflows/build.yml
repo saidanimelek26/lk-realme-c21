@@ -28,7 +28,7 @@ jobs:
         git checkout e9b2ab0932573a0ca90cad11ab75d9619f19c458
     - name: Build the bootloader
       run: |
-        export python=python2
+        export python=python3
         touch ./main_dtb_header.bin # no dtb is required for X5
         TOOLCHAIN_PREFIX=~/gcc-toolchain/bin/arm-linux-androideabi- make X5
     - name : Upload bootloader
