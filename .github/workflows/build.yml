@@ -34,9 +34,9 @@ jobs:
       run: |
         export python=python2
         touch ./main_dtb_header.bin # no dtb is required for X5
-        TOOLCHAIN_PREFIX=~/gcc-toolchain/bin/arm-linux-androideabi- make X5
+        TOOLCHAIN_PREFIX=~/gcc-toolchain/bin/arm-linux-androideabi- make k65v1_64_bsp
     - name : Upload bootloader
       uses: actions/upload-artifact@v4
       with:
-        name: X5_lk-signed
-        path: /home/runner/work/lk/lk/build-X5/lk-sign.img
+        name: k65v1_64_bsp_lk-signed
+        path: /home/runner/work/lk/lk/build-k65v1_64_bsp/lk-sign.img
