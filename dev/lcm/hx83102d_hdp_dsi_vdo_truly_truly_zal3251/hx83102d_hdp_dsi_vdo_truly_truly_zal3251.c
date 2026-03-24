@@ -33,7 +33,7 @@
 #elif defined(BUILD_UBOOT)
 #include <asm/arch/mt_gpio.h>
 #else
-#include "disp_dts_gpio.h"
+// #include "disp_dts_gpio.h"
 #endif
 
 #ifdef BUILD_LK
