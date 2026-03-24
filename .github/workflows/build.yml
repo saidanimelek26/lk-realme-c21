@@ -15,8 +15,12 @@ jobs:
     - name: Install python2
       run: |
         sudo apt-get update
-        sudo apt-get install python2
+        sudo apt-get install -y software-properties-common
+        sudo add-apt-repository -y ppa:deadsnakes/ppa
+        sudo apt-get update
+        sudo apt-get install -y python2
         sudo ln -s /usr/bin/python2 /usr/local/bin/python
+        python --version
     - name: Cache GCC for Android
       id: cache-gcc
       uses: actions/cache@v4
