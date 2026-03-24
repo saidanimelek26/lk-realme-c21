@@ -495,5 +495,5 @@ LCM_DRIVER hx83102d_hdp_dsi_vdo_truly_truly_zal3251_lcm_drv = {
     .suspend_power = lcm_suspend_power,
     .resume_power = lcm_resume_power,
     .set_backlight_cmdq = lcm_setbacklight_cmdq,
-    .set_cabc_mode_cmdq = lcm_set_cabc_mode_cmdq,
+    // .set_cabc_mode_cmdq = lcm_set_cabc_mode_cmdq,  // Commented for LK
 };
