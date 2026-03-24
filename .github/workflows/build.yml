@@ -12,8 +12,11 @@ jobs:
     steps:
     - name: Checkout sources
       uses: actions/checkout@v4
-    - name: Install pyhton2
-      run: sudo apt-get install python3
+    - name: Install python2
+      run: |
+        sudo apt-get update
+        sudo apt-get install python2
+        sudo ln -s /usr/bin/python2 /usr/local/bin/python
     - name: Cache GCC for Android
       id: cache-gcc
       uses: actions/cache@v4
@@ -28,7 +31,7 @@ jobs:
         git checkout e9b2ab0932573a0ca90cad11ab75d9619f19c458
     - name: Build the bootloader
       run: |
-        export python=python3
+        export python=python2
         touch ./main_dtb_header.bin # no dtb is required for X5
         TOOLCHAIN_PREFIX=~/gcc-toolchain/bin/arm-linux-androideabi- make X5
     - name : Upload bootloader
