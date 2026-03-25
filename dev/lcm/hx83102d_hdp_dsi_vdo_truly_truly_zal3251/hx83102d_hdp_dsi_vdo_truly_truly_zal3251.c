@@ -32,8 +32,6 @@
 #include <platform/boot_mode.h>
 #elif defined(BUILD_UBOOT)
 #include <asm/arch/mt_gpio.h>
-#else
-#include "disp_dts_gpio.h"
 #endif
 
 #ifdef BUILD_LK
@@ -43,12 +41,13 @@
 #define LCM_LOGI(fmt, args...)  pr_info("[KERNEL/"LOG_TAG"]"fmt, ##args)
 #define LCM_LOGD(fmt, args...)  pr_info("[KERNEL/"LOG_TAG"]"fmt, ##args)
 #endif
-//extern int gesture_flag;
-//extern int hx_tp_oppo6765;
-
 
 #define HX83102D_TRULY_TRULY_LCM_ID (0x65)
+
+#ifndef BUILD_LK
 #include "disp_dts_gpio.h"
+#endif
+
 static const unsigned int BL_MIN_LEVEL = 20;
 #ifndef BUILD_LK
 typedef struct LCM_UTIL_FUNCS LCM_UTIL_FUNCS;
@@ -475,7 +474,6 @@ static void lcm_get_params(LCM_PARAMS *params)
     params->physical_width_um = LCM_PHYSICAL_WIDTH;
     params->physical_height_um = LCM_PHYSICAL_HEIGHT;
 #endif
-//    params->density = LCM_DENSITY;
 
     params->dsi.mode = SYNC_PULSE_VDO_MODE;
     params->dsi.switch_mode_enable = 0;
@@ -609,29 +607,27 @@ static void lcm_shudown_power(void)
 static void lcm_resume_power(void)
 {
 	LCM_LOGI("%s: enter\n", __func__);
-	//if(!gesture_flag) 
-	{
 #ifndef BUILD_LK
-		disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENP1);
-		MDELAY(5);
-		disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENN1);
-		MDELAY(5);
-		if (nt5038_i2c_client != NULL) {
-			nt5038_i2c_write_byte(nt5038_cmd_data[0].cmd, nt5038_cmd_data[0].data);
-			MDELAY(1);
-			nt5038_i2c_write_byte(nt5038_cmd_data[1].cmd, nt5038_cmd_data[1].data);
-			MDELAY(1);
-			nt5038_i2c_write_byte(nt5038_cmd_data[2].cmd, nt5038_cmd_data[2].data);
-			MDELAY(1);
-		}
-		else {
-			display_bias_setting(nt5038_cmd_data[0].data);
-			MDELAY(1);
-		}
-#else
-        MDELAY(20);
-#endif
+	disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENP1);
+	MDELAY(5);
+	disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENN1);
+	MDELAY(5);
+	if (nt5038_i2c_client != NULL) {
+		nt5038_i2c_write_byte(nt5038_cmd_data[0].cmd, nt5038_cmd_data[0].data);
+		MDELAY(1);
+		nt5038_i2c_write_byte(nt5038_cmd_data[1].cmd, nt5038_cmd_data[1].data);
+		MDELAY(1);
+		nt5038_i2c_write_byte(nt5038_cmd_data[2].cmd, nt5038_cmd_data[2].data);
+		MDELAY(1);
 	}
+	else {
+		display_bias_setting(nt5038_cmd_data[0].data);
+		MDELAY(1);
+	}
+#else
+    MDELAY(20);
+#endif
+
 	LCM_LOGI("%s: exit\n", __func__);
 }
 
