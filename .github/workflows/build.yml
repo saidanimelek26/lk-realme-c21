@@ -1,4 +1,4 @@
-name: Build workflow
+name: Build LK Bootloader
 
 on:
   push:
@@ -7,36 +7,49 @@ on:
 
 jobs:
   lk-build:
-    runs-on: ubuntu-22.04  # Switch to Ubuntu 22.04 which has Python 2
+    runs-on: ubuntu-22.04
 
     steps:
     - name: Checkout sources
       uses: actions/checkout@v4
-    - name: Install python2
+
+    - name: Install Python 2
       run: |
         sudo apt-get update
         sudo apt-get install -y python2
         sudo ln -s /usr/bin/python2 /usr/local/bin/python
         python --version
-    - name: Cache GCC for Android
+
+    - name: Cache GCC toolchain
       id: cache-gcc
       uses: actions/cache@v4
       with:
         path: ~/gcc-toolchain
         key: gcc-toolchain
-    - name: Download GCC for Android
+
+    - name: Download GCC toolchain
       if: steps.cache-gcc.outputs.cache-hit != 'true'
       run: |
         git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 ~/gcc-toolchain
         cd ~/gcc-toolchain
         git checkout e9b2ab0932573a0ca90cad11ab75d9619f19c458
-    - name: Build the bootloader
+
+    - name: Build LK
       run: |
         export python=python2
-        touch ./main_dtb_header.bin # no dtb is required for X5
+        touch ./main_dtb_header.bin
         TOOLCHAIN_PREFIX=~/gcc-toolchain/bin/arm-linux-androideabi- make k65v1_64_bsp
-    - name : Upload bootloader
+
+    - name: Show build output (debug)
+      run: ls -lh build-k65v1_64_bsp/
+
+    - name: Upload LK artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: k65v1_64_bsp-signed
-        path: /home/runner/work/lk/lk/build-k65v1_64_bsp/lk-sign.img
+        name: lk-build-output
+        path: |
+          build-k65v1_64_bsp/lk.img
+          build-k65v1_64_bsp/lk-verified.img
+          build-k65v1_64_bsp/lk.sym
+          build-k65v1_64_bsp/lk.lst
+          build-k65v1_64_bsp/lk.debug.lst
