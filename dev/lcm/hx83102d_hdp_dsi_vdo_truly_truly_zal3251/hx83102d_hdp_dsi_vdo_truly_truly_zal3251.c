@@ -4,13 +4,13 @@
  ** File: hx83102d_hdp_dsi_vdo_truly_truly_zal3251.c
  ** Description: Source file for LCD driver
  **          To Control LCD driver
- ** Version :1.1 (FIXED FOR LK)
+ ** Version :1.2 (FIXED FOR LK - I2C STRUCTURE FIX)
  ** Date : 2020/08/31 (MODIFIED: 2026/03/28)
  ** Author: wangcheng@ODM_HQ.Multimedia.LCD
  ** ---------------- Revision History: --------------------------
  ** <version>    <date>          < author >              <desc>
  **  1.0           2020/08/31   wangcheng@ODM_HQ   Source file for LCD driver
- **  1.1           2026/03/28   Fixed for LK: Added proper compare_id, fixed I2C, isolated kernel code.
+ **  1.2           2026/03/28   Fixed I2C structure for LK, moved kernel-only tables
  ********************************************/
 
 #define LOG_TAG "LCM_HX83102D_TRULY_TRULY"
@@ -212,12 +212,12 @@ static int nt5038_i2c_write_byte(kal_uint8 addr, kal_uint8 value)
     write_data[0] = addr;
     write_data[1] = value;
 
+    /* Initialize I2C structure properly for LK */
     NT5038_i2c.id = I2C_I2C_LCD_BIAS_CHANNEL;
-    NT5038_i2c.addr = (NT5038_SLAVE_ADDR_WRITE >> 1);
+    NT5038_i2c.addr = (NT5038_SLAVE_ADDR_WRITE >> 1); /* 7-bit address */
     NT5038_i2c.mode = ST_MODE;
-    NT5038_i2c.speed = 100;
-    NT5038_i2c.timing = 0;
-    NT5038_i2c.push_pull = 1;
+    NT5038_i2c.speed = 100; /* 100 kHz */
+    /* Note: timing and push_pull members may not exist in all LK versions */
     len = 2;
 
     ret_code = i2c_write(&NT5038_i2c, write_data, len);
@@ -282,6 +282,8 @@ struct LCM_setting_table {
     unsigned char para_list[64];
 };
 
+/* Backlight mapping table - ONLY FOR KERNEL */
+#ifndef BUILD_LK
 static int blmap_table[] = {
     48,17, 29,23, 25,26, 30,23, 35,24, 34,28, 39,26, 40,25, 42,21, 41,23, 44,19, 44,19,
     50,3, 51,7, 52,9, 58,34, 58,33, 64,65, 61,48, 71,106, 68,87, 70,100, 77,146, 78,146,
@@ -291,6 +293,7 @@ static int blmap_table[] = {
     338,3510, 329,3357, 374,4123, 371,4074, 387,4357, 352,3720, 493,6294, 445,5407,
     477,6015, 490,6255, 516,6760, 584,8110, 326,2906,
 };
+#endif
 
 static struct LCM_setting_table lcm_suspend_setting[] = {
     {0x28, 0, {}},
@@ -299,7 +302,7 @@ static struct LCM_setting_table lcm_suspend_setting[] = {
     {REGFLAG_DELAY, 60, {}},
 };
 
-/* IMPORTANT: init_setting_vdo remains EXACTLY as original */
+/* init_setting_vdo remains EXACTLY as original */
 static struct LCM_setting_table init_setting_vdo[] = {
     {0xB9, 3, {0x83,0x10,0x2D}},
     {0xC0,11, {0x30,0x30,0x00,0x00,0x19,0x21,0x00,0x08,0x00,0x1A,0x1B}},
@@ -351,6 +354,9 @@ static struct LCM_setting_table bl_level_dimming_exit[] = {
     {0x51, 2, {0x0F, 0xFF}},
     {REGFLAG_END_OF_TABLE, 0x00, {}}
 };
+
+/* CABC tables - ONLY FOR KERNEL */
+#ifndef BUILD_LK
 static struct LCM_setting_table lcm_cabc_enter_setting_ui[] = {
     {0x55, 1, {0x01}},
     {REGFLAG_DELAY, 10, {}},
@@ -371,6 +377,7 @@ static struct LCM_setting_table lcm_cabc_exit_setting[] = {
     {REGFLAG_DELAY, 10, {}},
     {REGFLAG_END_OF_TABLE, 0x00, {}}
 };
+#endif
 
 static void push_table(void *cmdq, struct LCM_setting_table *table,
     unsigned int count, unsigned char force_update)
@@ -657,6 +664,8 @@ static void lcm_resume(void)
     size = sizeof(init_setting_vdo) / sizeof(struct LCM_setting_table);
     push_table(NULL, init_setting_vdo, size, 1);
 
+#ifndef BUILD_LK
+    /* CABC is only for kernel */
     switch (cabc_lastlevel) {
         case 1:
             push_table(NULL, lcm_cabc_enter_setting_ui,
@@ -671,6 +680,7 @@ static void lcm_resume(void)
                 sizeof(lcm_cabc_enter_setting_moving) / sizeof(struct LCM_setting_table), 1);
             break;
     }
+#endif
     LCM_LOGI("%s: exit\n", __func__);
 }
 
