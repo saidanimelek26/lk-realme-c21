@@ -4,13 +4,13 @@
  ** File: hx83102d_hdp_dsi_vdo_truly_truly_zal3251.c
  ** Description: Source file for LCD driver
  **          To Control LCD driver
- ** Version :1.0 (MODIFIED FOR LK FIX - DISABLE ID CHECK)
+ ** Version :1.0 (MODIFIED FOR LK FIX - FULL POWER SEQUENCE)
  ** Date : 2020/08/31 (MODIFIED: 2026/03/28)
  ** Author: wangcheng@ODM_HQ.Multimedia.LCD
  ** ---------------- Revision History: --------------------------
  ** <version>    <date>          < author >              <desc>
  **  1.0           2020/08/31   wangcheng@ODM_HQ   Source file for LCD driver
- **  1.1           2026/03/28   Disabled LCM ID check for LK to fix DSI timeout
+ **  1.1           2026/03/28   Added proper power and reset sequence for LK
  ********************************************/
 
 #define LOG_TAG "LCM_HX83102D_TRULY_TRULY"
@@ -61,15 +61,11 @@ struct NT5038_SETTING_TABLE {
 	unsigned char data;
 };
 
-#ifdef BUILD_LK
-/* LK: Disable NT5038 to avoid compilation issues */
-#else
 static struct NT5038_SETTING_TABLE nt5038_cmd_data[3] = {
 	{ 0x00, 0x12 },
 	{ 0x01, 0x12 },
 	{ 0x03, 0x73 }
 };
-#endif
 
 #define LCM_RESET_PIN                                       (GPIO45|0x80000000)
 #ifndef GPIO_LCD_BIAS_ENP_PIN
@@ -77,6 +73,16 @@ static struct NT5038_SETTING_TABLE nt5038_cmd_data[3] = {
 #endif
 #ifndef GPIO_LCD_BIAS_ENN_PIN
 #define GPIO_LCD_BIAS_ENN_PIN                               (GPIO165|0x80000000)
+#endif
+
+/* GPIO control macros for LK */
+#ifdef BUILD_LK
+#define LCD_BIAS_ENP_SET_HIGH() mt_set_gpio_out(GPIO_LCD_BIAS_ENP_PIN, GPIO_OUT_ONE)
+#define LCD_BIAS_ENP_SET_LOW()  mt_set_gpio_out(GPIO_LCD_BIAS_ENP_PIN, GPIO_OUT_ZERO)
+#define LCD_BIAS_ENN_SET_HIGH() mt_set_gpio_out(GPIO_LCD_BIAS_ENN_PIN, GPIO_OUT_ONE)
+#define LCD_BIAS_ENN_SET_LOW()  mt_set_gpio_out(GPIO_LCD_BIAS_ENN_PIN, GPIO_OUT_ZERO)
+#define LCM_RESET_SET_HIGH()    mt_set_gpio_out(LCM_RESET_PIN, GPIO_OUT_ONE)
+#define LCM_RESET_SET_LOW()     mt_set_gpio_out(LCM_RESET_PIN, GPIO_OUT_ZERO)
 #endif
 
 #ifndef BUILD_LK
@@ -183,6 +189,7 @@ MODULE_AUTHOR("cheng.wang <wangcheng7@huaqin.com>");
 MODULE_DESCRIPTION("MTK LCD BIAS I2C Driver");
 MODULE_LICENSE("GPL");
 #else
+/* LK: I2C for NT5038 */
 #define NT5038_SLAVE_ADDR_WRITE  0x7C
 #define I2C_I2C_LCD_BIAS_CHANNEL 3
 static struct mt_i2c_t NT5038_i2c;
@@ -257,9 +264,6 @@ struct LCM_setting_table {
     unsigned char para_list[64];
 };
 
-#ifdef BUILD_LK
-/* LK: Disable blmap_table to avoid unused variable warning */
-#else
 static int blmap_table[] = {
 	48,17,
 	29,23,
@@ -326,7 +330,6 @@ static int blmap_table[] = {
 	584,8110,
 	326,2906,
 };
-#endif
 
 static struct LCM_setting_table lcm_suspend_setting[] = {
     {0x28, 0, {} },
@@ -456,10 +459,8 @@ static void lcm_get_params(LCM_PARAMS *params)
     params->height = FRAME_HEIGHT;
     params->physical_width = LCM_PHYSICAL_WIDTH/1000;
     params->physical_height = LCM_PHYSICAL_HEIGHT/1000;
-#ifndef BUILD_LK
     params->physical_width_um = LCM_PHYSICAL_WIDTH;
     params->physical_height_um = LCM_PHYSICAL_HEIGHT;
-#endif
 
     params->dsi.mode = SYNC_PULSE_VDO_MODE;
     params->dsi.switch_mode_enable = 0;
@@ -489,7 +490,9 @@ static void lcm_get_params(LCM_PARAMS *params)
     params->dsi.cont_clock = 0;
     params->dsi.clk_lp_per_line_enable = 0;
 
-#ifndef BUILD_LK
+#ifdef BUILD_LK
+    /* LK: ESD check is handled by Kernel, keep simple */
+#else
     int boot_mode = 0;
     if (get_boot_mode() == META_BOOT) {
         boot_mode++;
@@ -526,7 +529,27 @@ static void lcm_get_params(LCM_PARAMS *params)
 static void lcm_init_power(void)
 {
 	LCM_LOGI("%s: enter\n", __func__);
-#ifndef BUILD_LK
+#ifdef BUILD_LK
+	/* LK: Proper power sequence with GPIO control */
+	/* Step 1: Enable LCD bias ENP and ENN */
+	mt_set_gpio_mode(GPIO_LCD_BIAS_ENP_PIN, GPIO_MODE_GPIO);
+	mt_set_gpio_dir(GPIO_LCD_BIAS_ENP_PIN, GPIO_DIR_OUT);
+	LCD_BIAS_ENP_SET_HIGH();
+	MDELAY(5);
+	
+	mt_set_gpio_mode(GPIO_LCD_BIAS_ENN_PIN, GPIO_MODE_GPIO);
+	mt_set_gpio_dir(GPIO_LCD_BIAS_ENN_PIN, GPIO_DIR_OUT);
+	LCD_BIAS_ENN_SET_HIGH();
+	MDELAY(5);
+	
+	/* Step 2: Configure NT5038 via I2C */
+	nt5038_i2c_write_byte(nt5038_cmd_data[0].cmd, nt5038_cmd_data[0].data);
+	MDELAY(1);
+	nt5038_i2c_write_byte(nt5038_cmd_data[1].cmd, nt5038_cmd_data[1].data);
+	MDELAY(1);
+	nt5038_i2c_write_byte(nt5038_cmd_data[2].cmd, nt5038_cmd_data[2].data);
+	MDELAY(1);
+#else
 	disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENP1);
 	MDELAY(5);
 	disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENN1);
@@ -543,9 +566,6 @@ static void lcm_init_power(void)
 		display_bias_setting(nt5038_cmd_data[0].data);
 		MDELAY(1);
 	}
-#else
-    /* LK: Basic power sequence - wait for power stability */
-    MDELAY(20);
 #endif
 	LCM_LOGI("%s: exit\n", __func__);
 }
@@ -553,7 +573,12 @@ static void lcm_init_power(void)
 static void lcm_suspend_power(void)
 {
 	LCM_LOGI("%s: enter\n", __func__);
-#ifndef BUILD_LK
+#ifdef BUILD_LK
+	LCD_BIAS_ENN_SET_LOW();
+	MDELAY(5);
+	LCD_BIAS_ENP_SET_LOW();
+	MDELAY(5);
+#else
 	if (0 == tp_gesture_enable_flag())
 	{
 		disp_dts_gpio_select_state(DTS_GPIO_STATE_LCM_RST_OUT0);
@@ -563,8 +588,6 @@ static void lcm_suspend_power(void)
 		disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENP0);
 		MDELAY(5);
 	}
-#else
-    MDELAY(10);
 #endif
 	LCM_LOGI("%s: exit\n", __func__);
 }
@@ -573,7 +596,13 @@ static void lcm_suspend_power(void)
 static void lcm_shudown_power(void)
 {
     LCM_LOGI("%s: enter\n", __func__);
-#ifndef BUILD_LK
+#ifdef BUILD_LK
+    LCM_RESET_SET_LOW();
+    MDELAY(2);
+    LCD_BIAS_ENN_SET_LOW();
+    MDELAY(2);
+    LCD_BIAS_ENP_SET_LOW();
+#else
     disp_dts_gpio_select_state(DTS_GPIO_STATE_LCM_RST_OUT0);
     MDELAY(2);
     disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENN0);
@@ -587,7 +616,18 @@ static void lcm_shudown_power(void)
 static void lcm_resume_power(void)
 {
 	LCM_LOGI("%s: enter\n", __func__);
-#ifndef BUILD_LK
+#ifdef BUILD_LK
+	LCD_BIAS_ENP_SET_HIGH();
+	MDELAY(5);
+	LCD_BIAS_ENN_SET_HIGH();
+	MDELAY(5);
+	nt5038_i2c_write_byte(nt5038_cmd_data[0].cmd, nt5038_cmd_data[0].data);
+	MDELAY(1);
+	nt5038_i2c_write_byte(nt5038_cmd_data[1].cmd, nt5038_cmd_data[1].data);
+	MDELAY(1);
+	nt5038_i2c_write_byte(nt5038_cmd_data[2].cmd, nt5038_cmd_data[2].data);
+	MDELAY(1);
+#else
 	disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENP1);
 	MDELAY(5);
 	disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENN1);
@@ -604,8 +644,6 @@ static void lcm_resume_power(void)
 		display_bias_setting(nt5038_cmd_data[0].data);
 		MDELAY(1);
 	}
-#else
-    MDELAY(20);
 #endif
 	LCM_LOGI("%s: exit\n", __func__);
 }
@@ -614,7 +652,18 @@ static void lcm_init(void)
 {
     int size;
 	LCM_LOGI("%s: enter\n", __func__);
-#ifndef BUILD_LK
+#ifdef BUILD_LK
+	/* LK: Proper reset sequence matching Kernel */
+	mt_set_gpio_mode(LCM_RESET_PIN, GPIO_MODE_GPIO);
+	mt_set_gpio_dir(LCM_RESET_PIN, GPIO_DIR_OUT);
+	
+	LCM_RESET_SET_HIGH();
+	MDELAY(5);
+	LCM_RESET_SET_LOW();
+	MDELAY(2);
+	LCM_RESET_SET_HIGH();
+	MDELAY(50);
+#else
 	disp_dts_gpio_select_state(DTS_GPIO_STATE_LCM_RST_OUT1);
 	MDELAY(5);
 	disp_dts_gpio_select_state(DTS_GPIO_STATE_LCM_RST_OUT0);
@@ -623,10 +672,6 @@ static void lcm_init(void)
 	MDELAY(50);
 
     lcd_queue_load_tp_fw();
-#else
-    /* LK: Basic reset sequence with longer delays */
-    MDELAY(20);
-    MDELAY(50);
 #endif
 
     size = sizeof(init_setting_vdo) /
@@ -651,7 +696,14 @@ static void lcm_resume(void)
 {
 	int size;
 	LCM_LOGI("%s: enter\n", __func__);
-#ifndef BUILD_LK
+#ifdef BUILD_LK
+	LCM_RESET_SET_HIGH();
+	MDELAY(5);
+	LCM_RESET_SET_LOW();
+	MDELAY(2);
+	LCM_RESET_SET_HIGH();
+	MDELAY(50);
+#else
 	disp_dts_gpio_select_state(DTS_GPIO_STATE_LCM_RST_OUT1);
 	MDELAY(5);
 	disp_dts_gpio_select_state(DTS_GPIO_STATE_LCM_RST_OUT0);
@@ -660,8 +712,6 @@ static void lcm_resume(void)
 	MDELAY(50);
 
 	lcd_queue_load_tp_fw();
-#else
-    MDELAY(50);
 #endif
 
 	size = sizeof(init_setting_vdo) /
@@ -682,16 +732,32 @@ static void lcm_resume(void)
 }
 
 #ifdef BUILD_LK
-/* 
- * LCM ID check is DISABLED for LK
- * The DSI read operation in LK causes timeout and boot loop
- * Kernel will handle ID verification via ESD mechanism
- */
 static unsigned int lcm_compare_id(void)
 {
-    /* Return 1 to indicate LCM is present without performing DSI read */
-    LCM_LOGI("%s: LCM ID check bypassed for LK boot\n", __func__);
-    return 1;
+    unsigned char buffer[2] = {0};
+    unsigned int id = 0;
+    int retry = 0;
+    
+    LCM_LOGI("%s: Attempting to read LCM ID\n", __func__);
+    
+    /* Wait for display to stabilize after power and reset */
+    MDELAY(50);
+    
+    /* Try to read ID with retry */
+    for (retry = 0; retry < 3; retry++) {
+        MDELAY(10);
+        read_reg_v2(0x0A, buffer, 1);
+        id = buffer[0];
+        LCM_LOGI("%s: Attempt %d - LCM ID read = 0x%02x\n", __func__, retry + 1, id);
+        
+        if (id == 0x9D) {
+            LCM_LOGI("%s: LCM ID matched (0x9D)\n", __func__);
+            return 1;
+        }
+    }
+    
+    LCM_LOGI("%s: ID read failed, but continuing boot\n", __func__);
+    return 1;  /* Continue boot even if ID read fails */
 }
 #endif
 
