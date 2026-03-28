@@ -51,7 +51,7 @@
 #define LCM_LOGD(fmt, args...)  pr_info("[KERNEL/"LOG_TAG"]"fmt, ##args)
 #endif
 
-#define HX83102D_TRULY_TRULY_LCM_ID (0x9D)  /* Correct ID read from register 0x0A */
+#define HX83102D_TRULY_TRULY_LCM_ID (0x9D)
 
 #ifndef BUILD_LK
 #include "disp_dts_gpio.h"
@@ -66,14 +66,14 @@ typedef struct LCM_DRIVER LCM_DRIVER;
 static LCM_UTIL_FUNCS lcm_util;
 
 struct NT5038_SETTING_TABLE {
-	unsigned char cmd;
-	unsigned char data;
+    unsigned char cmd;
+    unsigned char data;
 };
 
 static struct NT5038_SETTING_TABLE nt5038_cmd_data[3] = {
-	{ 0x00, 0x12 },
-	{ 0x01, 0x12 },
-	{ 0x03, 0x73 }
+    { 0x00, 0x12 },
+    { 0x01, 0x12 },
+    { 0x03, 0x73 }
 };
 
 #define LCM_RESET_PIN                                       (GPIO45|0x80000000)
@@ -123,8 +123,8 @@ extern int tp_gesture_enable_flag(void);
 static struct i2c_board_info __initdata nt5038_board_info = {I2C_BOARD_INFO(DCDC_I2C_ID_NAME, DCDC_I2C_ADDR)};
 #else
 static const struct of_device_id lcm_of_match[] = {
-	{.compatible = "mediatek,I2C_LCD_BIAS"},
-	{},
+    {.compatible = "mediatek,I2C_LCD_BIAS"},
+    {},
 };
 #endif
 extern struct i2c_client *nt5038_i2c_client;
@@ -133,64 +133,64 @@ static int nt5038_probe(struct i2c_client *client, const struct i2c_device_id *i
 static int nt5038_remove(struct i2c_client *client);
 
 struct nt5038_dev {
-	struct i2c_client *client;
+    struct i2c_client *client;
 };
 static const struct i2c_device_id nt5038_id[] = {
-	{ DCDC_I2C_ID_NAME, 0 },
-	{ }
+    { DCDC_I2C_ID_NAME, 0 },
+    { }
 };
 
 static struct i2c_driver nt5038_iic_driver = {
-	.id_table = nt5038_id,
-	.probe = nt5038_probe,
-	.remove = nt5038_remove,
-	.driver = {
-		.owner = THIS_MODULE,
-		.name = "nt5038",
+    .id_table = nt5038_id,
+    .probe = nt5038_probe,
+    .remove = nt5038_remove,
+    .driver = {
+        .owner = THIS_MODULE,
+        .name = "nt5038",
 #if !defined(CONFIG_MTK_LEGACY)
-		.of_match_table = lcm_of_match,
+        .of_match_table = lcm_of_match,
 #endif
-	},
+    },
 };
 
 static int nt5038_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
-	nt5038_i2c_client = client;
-	return 0;
+    nt5038_i2c_client = client;
+    return 0;
 }
 static int nt5038_remove(struct i2c_client *client)
 {
-	nt5038_i2c_client = NULL;
-	i2c_unregister_device(client);
-	return 0;
+    nt5038_i2c_client = NULL;
+    i2c_unregister_device(client);
+    return 0;
 }
 static int nt5038_i2c_write_byte(unsigned char addr, unsigned char value)
 {
-	int ret = 0;
-	struct i2c_client *client = nt5038_i2c_client;
-	char write_data[2] = {0};
-	if (client == NULL) {
-		LCM_LOGI("ERROR!! nt5038_i2c_client is null\n");
-		return -1;
-	}
-	write_data[0] = addr;
-	write_data[1] = value;
-	ret = i2c_master_send(client, write_data, 2);
-	if (ret < 0)
-		LCM_LOGI("nt5038 write data fail !!\n");
-	return ret;
+    int ret = 0;
+    struct i2c_client *client = nt5038_i2c_client;
+    char write_data[2] = {0};
+    if (client == NULL) {
+        LCM_LOGI("ERROR!! nt5038_i2c_client is null\n");
+        return -1;
+    }
+    write_data[0] = addr;
+    write_data[1] = value;
+    ret = i2c_master_send(client, write_data, 2);
+    if (ret < 0)
+        LCM_LOGI("nt5038 write data fail !!\n");
+    return ret;
 }
 static int __init nt5038_iic_init(void)
 {
 #if defined(CONFIG_MTK_LEGACY)
-	i2c_register_board_info(DCDC_I2C_BUSNUM, &nt5038_board_info, 1);
+    i2c_register_board_info(DCDC_I2C_BUSNUM, &nt5038_board_info, 1);
 #endif
-	i2c_add_driver(&nt5038_iic_driver);
-	return 0;
+    i2c_add_driver(&nt5038_iic_driver);
+    return 0;
 }
 static void __exit nt5038_iic_exit(void)
 {
-	i2c_del_driver(&nt5038_iic_driver);
+    i2c_del_driver(&nt5038_iic_driver);
 }
 module_init(nt5038_iic_init);
 module_exit(nt5038_iic_exit);
@@ -205,29 +205,28 @@ MODULE_LICENSE("GPL");
 static struct mt_i2c_t NT5038_i2c;
 static int nt5038_i2c_write_byte(kal_uint8 addr, kal_uint8 value)
 {
-	kal_uint32 ret_code = I2C_OK;
-	kal_uint8 write_data[2];
-	kal_uint16 len;
+    kal_uint32 ret_code = I2C_OK;
+    kal_uint8 write_data[2];
+    kal_uint16 len;
 
-	write_data[0] = addr;
-	write_data[1] = value;
+    write_data[0] = addr;
+    write_data[1] = value;
 
-	/* Initialize I2C structure properly for LK */
-	NT5038_i2c.id = I2C_I2C_LCD_BIAS_CHANNEL;
-	NT5038_i2c.addr = (NT5038_SLAVE_ADDR_WRITE >> 1); /* 7-bit address */
-	NT5038_i2c.mode = ST_MODE;
-	NT5038_i2c.speed = 100; /* 100 kHz */
-	NT5038_i2c.timing = 0;   /* Use default timing */
-	NT5038_i2c.push_pull = 1; /* Enable push-pull */
-	len = 2;
+    NT5038_i2c.id = I2C_I2C_LCD_BIAS_CHANNEL;
+    NT5038_i2c.addr = (NT5038_SLAVE_ADDR_WRITE >> 1);
+    NT5038_i2c.mode = ST_MODE;
+    NT5038_i2c.speed = 100;
+    NT5038_i2c.timing = 0;
+    NT5038_i2c.push_pull = 1;
+    len = 2;
 
-	ret_code = i2c_write(&NT5038_i2c, write_data, len);
-	if (ret_code != I2C_OK) {
-		LCM_LOGI("%s: i2c_write FAILED! addr:0x%x, value:0x%x ret_code: %d\n", __func__, addr, value, ret_code);
-	} else {
-		LCM_LOGI("%s: i2c_write: addr:0x%x, value:0x%x ret_code: %d\n", __func__, addr, value, ret_code);
-	}
-	return ret_code;
+    ret_code = i2c_write(&NT5038_i2c, write_data, len);
+    if (ret_code != I2C_OK) {
+        LCM_LOGI("%s: i2c_write FAILED! addr:0x%x, value:0x%x ret_code: %d\n", __func__, addr, value, ret_code);
+    } else {
+        LCM_LOGI("%s: i2c_write: addr:0x%x, value:0x%x ret_code: %d\n", __func__, addr, value, ret_code);
+    }
+    return ret_code;
 }
 #endif
 
@@ -283,15 +282,14 @@ struct LCM_setting_table {
     unsigned char para_list[64];
 };
 
-/* Backlight mapping table - kept for kernel, not used in LK */
 static int blmap_table[] = {
-	48,17, 29,23, 25,26, 30,23, 35,24, 34,28, 39,26, 40,25, 42,21, 41,23, 44,19, 44,19,
-	50,3, 51,7, 52,9, 58,34, 58,33, 64,65, 61,48, 71,106, 68,87, 70,100, 77,146, 78,146,
-	87,211, 88,219, 87,210, 88,213, 125,542, 96,272, 91,221, 145,757, 122,522, 183,1166,
-	122,502, 155,872, 161,943, 151,823, 190,1300, 164,975, 264,2255, 152,785, 277,2467,
-	187,1228, 239,1961, 203,1440, 242,2015, 271,2446, 284,2645, 310,3045, 303,2936,
-	338,3510, 329,3357, 374,4123, 371,4074, 387,4357, 352,3720, 493,6294, 445,5407,
-	477,6015, 490,6255, 516,6760, 584,8110, 326,2906,
+    48,17, 29,23, 25,26, 30,23, 35,24, 34,28, 39,26, 40,25, 42,21, 41,23, 44,19, 44,19,
+    50,3, 51,7, 52,9, 58,34, 58,33, 64,65, 61,48, 71,106, 68,87, 70,100, 77,146, 78,146,
+    87,211, 88,219, 87,210, 88,213, 125,542, 96,272, 91,221, 145,757, 122,522, 183,1166,
+    122,502, 155,872, 161,943, 151,823, 190,1300, 164,975, 264,2255, 152,785, 277,2467,
+    187,1228, 239,1961, 203,1440, 242,2015, 271,2446, 284,2645, 310,3045, 303,2936,
+    338,3510, 329,3357, 374,4123, 371,4074, 387,4357, 352,3720, 493,6294, 445,5407,
+    477,6015, 490,6255, 516,6760, 584,8110, 326,2906,
 };
 
 static struct LCM_setting_table lcm_suspend_setting[] = {
@@ -301,6 +299,7 @@ static struct LCM_setting_table lcm_suspend_setting[] = {
     {REGFLAG_DELAY, 60, {}},
 };
 
+/* IMPORTANT: init_setting_vdo remains EXACTLY as original */
 static struct LCM_setting_table init_setting_vdo[] = {
     {0xB9, 3, {0x83,0x10,0x2D}},
     {0xC0,11, {0x30,0x30,0x00,0x00,0x19,0x21,0x00,0x08,0x00,0x1A,0x1B}},
@@ -413,7 +412,6 @@ static void lcm_get_params(LCM_PARAMS *params)
     params->physical_height = LCM_PHYSICAL_HEIGHT / 1000;
 
 #ifndef BUILD_LK
-    /* These fields exist only in Kernel, not in LK */
     params->physical_width_um = LCM_PHYSICAL_WIDTH;
     params->physical_height_um = LCM_PHYSICAL_HEIGHT;
 #endif
@@ -445,7 +443,6 @@ static void lcm_get_params(LCM_PARAMS *params)
     params->dsi.clk_lp_per_line_enable = 0;
 
 #ifndef BUILD_LK
-    /* ESD check and other kernel-only features */
     int boot_mode = 0;
     if (get_boot_mode() == META_BOOT) {
         boot_mode++;
@@ -483,7 +480,6 @@ static void lcm_init_power(void)
 {
     LCM_LOGI("%s: enter\n", __func__);
 #ifdef BUILD_LK
-    /* LK: GPIO-based power control */
     mt_set_gpio_mode(GPIO_LCD_BIAS_ENP_PIN, GPIO_MODE_GPIO);
     mt_set_gpio_dir(GPIO_LCD_BIAS_ENP_PIN, GPIO_DIR_OUT);
     LCD_BIAS_ENP_SET_HIGH();
@@ -602,7 +598,6 @@ static void lcm_init(void)
     LCM_LOGI("%s: enter\n", __func__);
 
 #ifdef BUILD_LK
-    /* LK: GPIO-based reset sequence */
     mt_set_gpio_mode(LCM_RESET_PIN, GPIO_MODE_GPIO);
     mt_set_gpio_dir(LCM_RESET_PIN, GPIO_DIR_OUT);
 
@@ -688,10 +683,8 @@ static unsigned int lcm_compare_id(void)
 
     LCM_LOGI("%s: Attempting to read LCM ID\n", __func__);
 
-    /* Wait for display to stabilize after power and reset */
     MDELAY(50);
 
-    /* Try to read ID with retry for robustness */
     for (retry = 0; retry < 3; retry++) {
         MDELAY(10);
         read_reg_v2(0x0A, buffer, 1);
@@ -704,11 +697,9 @@ static unsigned int lcm_compare_id(void)
         }
     }
 
-    /* If we reach here, ID read failed or didn't match.
-       In LK, we might still want to continue booting. */
     LCM_LOGI("%s: ID read failed or mismatched (expected 0x%02X), but continuing boot\n",
              __func__, HX83102D_TRULY_TRULY_LCM_ID);
-    return 1; /* Return 1 to allow boot to continue, assuming the panel is connected */
+    return 1;
 }
 #endif
 
