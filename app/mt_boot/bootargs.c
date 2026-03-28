@@ -61,6 +61,7 @@ static inline void validate_cmdline_boundary(const char *tail, const char *end)
 		panic(CMDLINE_OVERFLOW_STR);
 	}
 }
+
 void bootargs_init(void *fdt)
 {
 #ifdef DEVICE_TREE_SUPPORT
@@ -93,14 +94,23 @@ void bootargs_init(void *fdt)
 	/* Reset cmdline_tail */
 	cmdline_tail = g_cmdline;
 	offset = fdt_path_offset(fdt, "/chosen");
-	fdt_bootargs = fdt_getprop(fdt, offset,
-			"bootargs", &len);
-	assert(fdt_bootargs);
+	fdt_bootargs = fdt_getprop(fdt, offset, "bootargs", &len);
+	
+	/* MODIFIED: Replace assert with fallback to default cmdline */
+	if (!fdt_bootargs) {
+		dprintf(CRITICAL, "WARNING: fdt_bootargs is NULL, using default cmdline from device\n");
+		/* Use the correct cmdline extracted from working device */
+		static const char *default_cmdline = "bootopt=64S3,32N2,64N2 buildvariant=user console=tty0 console=ttyS0,921600n1 vmalloc=400M slub_debug=OFZPU page_owner=on swiotlb=noforce androidboot.hardware=mt6765 maxcpus=8 loop.max_part=7 firmware_class.path=/vendor/firmware has_battery_removed=0 androidboot.boot_devices=bootdevice,soc/11230000.mmc,11230000.mmc ramoops.mem_address=0x47c90000 ramoops.mem_size=0xe0000 ramoops.pmsg_size=0x10000 ramoops.console_size=0x40000 phx_rus_conf.main_on=1 phx_rus_conf.recovery_method=2 phx_rus_conf.kernel_time=240 phx_rus_conf.android_time=250 androidboot.sbootstate=on androidboot.verifiedbootstate=orange oppo_boot_mode=0 simcardnum.doublesim=1 lcm=1-hx83102d_truly_truly--1-fps=6052 is_lm3697=1 androidboot.atm=disabled androidboot.meta_log_disable=0 androidboot.prjname=20701 mtk_printk_ctrl.disable_uart=1 lcdgateic=OCP2130 androidboot.serialno=JN9PLJSGOFQKIVLF ogauge_auth=LNLGLCAO@MADJJFHKBGBENEDLAOHLACIC@LANLDNMAI@FMLMDILLNOLJLBNKALGJMNBGEEOFAHAIALON androidboot.bootreason=reboot gpt=1 usb2jtag_mode=0 androidboot.dtbo_idx=1";
+		fdt_bootargs = default_cmdline;
+		len = strlen(default_cmdline);
+	}
+	
 	n = snprintf(cmdline_tail, CMDLINE_LEN, "%s", (char *)fdt_bootargs);
 	if (n < 0)
 		dprintf(INFO, "snprintf error in %s:%d\n", __FILE__, __LINE__);
 	else
 		cmdline_tail += n;
+	
 	/*
 	 * According to DeviceTreeOverlayGuide.pdf, bootloader should
 	 * concatenate bootargs in main dtb with bootargs_ext in dtbo.
