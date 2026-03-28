@@ -40,9 +40,9 @@ MTK_TINYSYS_SSPM_SUPPORT = yes
 # Modem Config
 MTK_PROTOCOL1_RAT_CONFIG = C/Lf/Lt/W/T/G
 
-# Security Settings - Disable for development
+# Security Settings - DISABLE ALL FOR TESTING
 MTK_VERIFIED_BOOT_SUPPORT = no
-MTK_SECURITY_SW_SUPPORT =yes
+MTK_SECURITY_SW_SUPPORT = no          # <--- Changed from yes to no
 MTK_SEC_FASTBOOT_UNLOCK_SUPPORT = yes
 MTK_SEC_USBDL = no
 MTK_SECURITY_ANTI_ROLLBACK = no
