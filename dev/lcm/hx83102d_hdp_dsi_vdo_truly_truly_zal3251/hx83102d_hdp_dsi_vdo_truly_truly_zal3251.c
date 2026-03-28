@@ -4,13 +4,13 @@
  ** File: hx83102d_hdp_dsi_vdo_truly_truly_zal3251.c
  ** Description: Source file for LCD driver
  **          To Control LCD driver
- ** Version :1.0 (MODIFIED FOR LK FIX)
+ ** Version :1.0 (MODIFIED FOR LK FIX - DISABLE ID CHECK)
  ** Date : 2020/08/31 (MODIFIED: 2026/03/28)
  ** Author: wangcheng@ODM_HQ.Multimedia.LCD
  ** ---------------- Revision History: --------------------------
  ** <version>    <date>          < author >              <desc>
  **  1.0           2020/08/31   wangcheng@ODM_HQ   Source file for LCD driver
- **  1.1           2026/03/28   Fixed DSI read timeout and compilation issues
+ **  1.1           2026/03/28   Disabled LCM ID check for LK to fix DSI timeout
  ********************************************/
 
 #define LOG_TAG "LCM_HX83102D_TRULY_TRULY"
@@ -544,7 +544,7 @@ static void lcm_init_power(void)
 		MDELAY(1);
 	}
 #else
-    /* LK: Basic power sequence */
+    /* LK: Basic power sequence - wait for power stability */
     MDELAY(20);
 #endif
 	LCM_LOGI("%s: exit\n", __func__);
@@ -624,7 +624,7 @@ static void lcm_init(void)
 
     lcd_queue_load_tp_fw();
 #else
-    /* LK: Basic reset sequence */
+    /* LK: Basic reset sequence with longer delays */
     MDELAY(20);
     MDELAY(50);
 #endif
@@ -682,26 +682,15 @@ static void lcm_resume(void)
 }
 
 #ifdef BUILD_LK
+/* 
+ * LCM ID check is DISABLED for LK
+ * The DSI read operation in LK causes timeout and boot loop
+ * Kernel will handle ID verification via ESD mechanism
+ */
 static unsigned int lcm_compare_id(void)
 {
-    unsigned char buffer[2] = {0};
-    unsigned int id = 0;
-    
-    LCM_LOGI("%s: Attempting to read LCM ID\n", __func__);
-    
-    MDELAY(30);
-    
-    read_reg_v2(0x0A, buffer, 1);
-    id = buffer[0];
-    
-    LCM_LOGI("%s: LCM ID read = 0x%02x\n", __func__, id);
-    
-    if (id == 0x9D) {
-        LCM_LOGI("%s: LCM ID matched (0x9D)\n", __func__);
-        return 1;
-    }
-    
-    LCM_LOGI("%s: Assuming LCM is present for LK boot\n", __func__);
+    /* Return 1 to indicate LCM is present without performing DSI read */
+    LCM_LOGI("%s: LCM ID check bypassed for LK boot\n", __func__);
     return 1;
 }
 #endif
