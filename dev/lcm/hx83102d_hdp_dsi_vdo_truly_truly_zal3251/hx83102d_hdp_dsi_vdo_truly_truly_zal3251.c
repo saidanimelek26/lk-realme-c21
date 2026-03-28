@@ -4,13 +4,13 @@
  ** File: hx83102d_hdp_dsi_vdo_truly_truly_zal3251.c
  ** Description: Source file for LCD driver
  **          To Control LCD driver
- ** Version :1.0 (MODIFIED FOR LK FIX - FULL POWER SEQUENCE)
+ ** Version :1.0 (MODIFIED FOR LK)
  ** Date : 2020/08/31 (MODIFIED: 2026/03/28)
  ** Author: wangcheng@ODM_HQ.Multimedia.LCD
  ** ---------------- Revision History: --------------------------
  ** <version>    <date>          < author >              <desc>
  **  1.0           2020/08/31   wangcheng@ODM_HQ   Source file for LCD driver
- **  1.1           2026/03/28   Added proper power and reset sequence for LK
+ **  1.1           2026/03/28   Adapted for LK compatibility
  ********************************************/
 
 #define LOG_TAG "LCM_HX83102D_TRULY_TRULY"
@@ -264,6 +264,8 @@ struct LCM_setting_table {
     unsigned char para_list[64];
 };
 
+#ifdef BUILD_LK
+/* LK: blmap_table not used in LK, but kept for compatibility */
 static int blmap_table[] = {
 	48,17,
 	29,23,
@@ -330,6 +332,7 @@ static int blmap_table[] = {
 	584,8110,
 	326,2906,
 };
+#endif
 
 static struct LCM_setting_table lcm_suspend_setting[] = {
     {0x28, 0, {} },
@@ -459,8 +462,12 @@ static void lcm_get_params(LCM_PARAMS *params)
     params->height = FRAME_HEIGHT;
     params->physical_width = LCM_PHYSICAL_WIDTH/1000;
     params->physical_height = LCM_PHYSICAL_HEIGHT/1000;
+    
+#ifndef BUILD_LK
+    /* These fields exist only in Kernel, not in LK */
     params->physical_width_um = LCM_PHYSICAL_WIDTH;
     params->physical_height_um = LCM_PHYSICAL_HEIGHT;
+#endif
 
     params->dsi.mode = SYNC_PULSE_VDO_MODE;
     params->dsi.switch_mode_enable = 0;
@@ -490,9 +497,8 @@ static void lcm_get_params(LCM_PARAMS *params)
     params->dsi.cont_clock = 0;
     params->dsi.clk_lp_per_line_enable = 0;
 
-#ifdef BUILD_LK
-    /* LK: ESD check is handled by Kernel, keep simple */
-#else
+#ifndef BUILD_LK
+    /* ESD check - ONLY FOR KERNEL */
     int boot_mode = 0;
     if (get_boot_mode() == META_BOOT) {
         boot_mode++;
@@ -530,8 +536,7 @@ static void lcm_init_power(void)
 {
 	LCM_LOGI("%s: enter\n", __func__);
 #ifdef BUILD_LK
-	/* LK: Proper power sequence with GPIO control */
-	/* Step 1: Enable LCD bias ENP and ENN */
+	/* LK: GPIO-based power control */
 	mt_set_gpio_mode(GPIO_LCD_BIAS_ENP_PIN, GPIO_MODE_GPIO);
 	mt_set_gpio_dir(GPIO_LCD_BIAS_ENP_PIN, GPIO_DIR_OUT);
 	LCD_BIAS_ENP_SET_HIGH();
@@ -542,7 +547,6 @@ static void lcm_init_power(void)
 	LCD_BIAS_ENN_SET_HIGH();
 	MDELAY(5);
 	
-	/* Step 2: Configure NT5038 via I2C */
 	nt5038_i2c_write_byte(nt5038_cmd_data[0].cmd, nt5038_cmd_data[0].data);
 	MDELAY(1);
 	nt5038_i2c_write_byte(nt5038_cmd_data[1].cmd, nt5038_cmd_data[1].data);
@@ -653,7 +657,7 @@ static void lcm_init(void)
     int size;
 	LCM_LOGI("%s: enter\n", __func__);
 #ifdef BUILD_LK
-	/* LK: Proper reset sequence matching Kernel */
+	/* LK: GPIO-based reset sequence */
 	mt_set_gpio_mode(LCM_RESET_PIN, GPIO_MODE_GPIO);
 	mt_set_gpio_dir(LCM_RESET_PIN, GPIO_DIR_OUT);
 	
@@ -757,7 +761,7 @@ static unsigned int lcm_compare_id(void)
     }
     
     LCM_LOGI("%s: ID read failed, but continuing boot\n", __func__);
-    return 1;  /* Continue boot even if ID read fails */
+    return 1;
 }
 #endif
 
