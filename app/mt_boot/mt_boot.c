@@ -67,13 +67,17 @@
 #include "oemkey.h"
 #endif
 #include <video.h>              // for video_printf()
+#ifdef CFG_MTK_WDT_COMMON
+#include <mtk_wdt.h>
+#else
 #include <platform/mtk_wdt.h>   // for mtk_wdt_disable()
+#endif
 #include <mt_boot.h>
 #include <libfdt.h>
 #include <ufdt_overlay.h>       // for ufdt_install_blob(), ufdt_apply_overlay()
 #include <mt_rtc.h>             // for Check_RTC_Recovery_Mode()
 #include <part_interface.h>     // for partition_read()
-#include <dev/mrdump.h>         // for mrdump_append_cmdline()
+#include <dev/mrdump.h>         // for mrdump_init()
 #include <iothread.h>
 #include <RoT.h>
 #include <odm_mdtbo.h>          // for load_overlay_dtbo()
@@ -93,6 +97,9 @@
 #endif
 #include <bootargs.h>
 #include <platform/mtk_wdt.h>
+#include <error.h>
+#include <chip_id.h>
+#include <img_workbuf.h>
 
 #ifndef LK_RAMDISK_MAX_SIZE
 #define LK_RAMDISK_MAX_SIZE		(16*1024*1024)
@@ -115,6 +122,7 @@
 #include <sec_devinfo.h>
 
 #include <log_store_lk.h>
+#include <lib/heap.h>
 
 extern u32 current_lk_buf_addr_get(void) __attribute__((weak));
 extern u32 current_buf_addr_get(void) __attribute__((weak));
@@ -147,6 +155,8 @@ extern void custom_port_in_kernel(BOOTMODE boot_mode, char *command);
 extern const char *mt_disp_get_lcm_id(void);
 extern unsigned int DISP_GetVRamSize(void);
 extern int mt_disp_is_lcm_connected(void);
+extern int disp_lcm_fill_lcm_dts_phandle(void* fdt, int idx) __attribute__((weak));
+extern int disp_lcm_get_dts_panel_index(void)  __attribute__((weak));
 extern int fastboot_init(void *base, unsigned size);
 extern int sec_boot_check(int try_lock);
 extern int seclib_set_oemkey(u8 *key, u32 key_size);
@@ -175,12 +185,8 @@ u32 kernel_sz_mb = 0;
 u32 ramdisk_sz_mb = 0;
 u32 lk_addr_mb = 0;
 u32 scratch_addr_mb = 0;
+static u32 kernel_align = PAGE_SIZE;
 #endif
-
-/* do not use this variable any more, it exists only to make
- * all platforms built successfully.
- */
-struct bootimg_hdr *g_boot_hdr = NULL;
 
 #if defined(MTK_SECURITY_SW_SUPPORT)
 u8 g_oemkey[OEM_PUBK_SZ] = {OEM_PUBK};
@@ -194,7 +200,7 @@ int boot_voltage;
 int two_sec_reboot;
 
 #ifdef MTK_AB_OTA_UPDATER
-char *p_AB_suffix;
+const char *p_AB_suffix;
 static uint8_t AB_retry_count;
 #endif /* MTK_AB_OTA_UPDATER */
 
@@ -229,7 +235,7 @@ static uint8_t AB_retry_count;
  * Then pass the serial number from cmdline to kernel.
  */
 /* The following option should be defined in project make file. */
-/* #define SERIAL_NUM_FROM_BARCODE */
+#define SERIAL_NUM_FROM_BARCODE
 
 #if defined(CONFIG_MTK_USB_UNIQUE_SERIAL) || (defined(MTK_SECURITY_SW_SUPPORT) && defined(MTK_SEC_FASTBOOT_UNLOCK_SUPPORT))
 #define SERIALNO_LEN    38  /* from preloader */
@@ -322,6 +328,42 @@ extern unsigned int g_fb_base;
 extern unsigned int g_fb_size;
 unsigned int logo_lk_t = 0;
 bool boot_ftrace = false;
+
+static int boot_time_via_dt(void *fdt, unsigned int *lk_boot_time)
+{
+	int offset, nodeoffset, ret = 0;
+	unsigned int pl_t = 0, i;
+	const char *boot_names[] = {"pl_t","lk_t","lk_logo_t"};
+	const char *main_boot_name;
+
+	offset = fdt_path_offset(fdt, "/");
+	if (offset < 0) {
+		dprintf(CRITICAL,"Warning: can't search root node in device tree\n");
+	}
+
+	nodeoffset = fdt_add_subnode(fdt, offset, "bootprof");
+	if (nodeoffset < 0) {
+		dprintf(CRITICAL,"Warning: can't add bootprof node in device tree\n");
+		return -1;
+	} else {
+		pl_t = g_boot_arg->boot_time;
+		*lk_boot_time = (unsigned int)get_timer(boot_time);
+		int boot_times[] = {cpu_to_fdt32(pl_t), cpu_to_fdt32(*lk_boot_time),
+			cpu_to_fdt32(logo_lk_t)};
+		for (i = 0; i < sizeof(boot_times)/sizeof(boot_times[0]); i++) {
+			main_boot_name = boot_names[i];
+			ret = fdt_setprop(fdt, nodeoffset, main_boot_name, &boot_times[i],
+				sizeof(unsigned int));
+			if (ret) {
+				dprintf(CRITICAL,"Warning: can't add %s property in device tree\n",
+					main_boot_name);
+				return -1;
+			}
+		}
+	}
+
+	return ret;
+}
 
 void __attribute__((weak)) send_root_of_trust_info(void){}
 
@@ -417,11 +459,24 @@ void mboot_allocate_bootimg_from_mblock(struct bootimg_hdr *p_boot_hdr)
 	(dtb_kernel_addr_mb == p_boot_hdr->tags_addr))
 		return;
 
-	#ifdef KERNEL_DECOMPRESS_SIZE
-		kernel_sz_mb = KERNEL_DECOMPRESS_SIZE;
-	#else
-		kernel_sz_mb = 0x03200000;
-	#endif
+#ifdef LK_KERNEL_64_MAX_SIZE
+	/* use dynamic kernel laoding when
+	 * p_boot_hdr->kernel_addr = KERNEL_MBLOCK_LIMIT - LK_DYNAMIC_KERNEL_64_MAX_SIZE
+	 */
+#ifdef LK_DYNAMIC_KERNEL_64_MAX_SIZE
+	if (p_boot_hdr->kernel_addr == KERNEL_MBLOCK_LIMIT - LK_DYNAMIC_KERNEL_64_MAX_SIZE)
+		kernel_sz_mb = LK_DYNAMIC_KERNEL_64_MAX_SIZE;
+	else
+#endif
+		kernel_sz_mb = LK_KERNEL_64_MAX_SIZE;
+
+	if (g_is_64bit_kernel)
+		kernel_align = 0x80000;
+	else
+		kernel_align = 0x8000;
+#else
+	kernel_sz_mb = 0x03200000;
+#endif
 	ramdisk_sz_mb = ROUNDUP(LK_RAMDISK_MAX_SIZE, PAGE_SIZE);
 	if (ramdisk_sz_mb == 0)
 		skip_ramdisk_check = 1;
@@ -432,7 +487,7 @@ void mboot_allocate_bootimg_from_mblock(struct bootimg_hdr *p_boot_hdr)
 		1, "dtb_kernel_addr_mb");
 
 	kernel_addr_mb = (u32)mblock_reserve_ext(&g_boot_arg->mblock_info,
-		kernel_sz_mb, PAGE_SIZE,(p_boot_hdr->kernel_addr+kernel_sz_mb),
+		kernel_sz_mb, kernel_align,(p_boot_hdr->kernel_addr+kernel_sz_mb),
 		0, "kernel_addr_mb");
 
 	if (!skip_ramdisk_check) {
@@ -440,39 +495,55 @@ void mboot_allocate_bootimg_from_mblock(struct bootimg_hdr *p_boot_hdr)
 			ramdisk_sz_mb, PAGE_SIZE,(p_boot_hdr->ramdisk_addr+ramdisk_sz_mb),
 			0, "ramdisk_addr_mb");
 	}
-
-	/* Check if the clarmed mb address the same as predefined one */
-	if ((!dtb_kernel_addr_mb) || (dtb_kernel_addr_mb!=p_boot_hdr->tags_addr)) {
+	/* Check if the claimed mb address the same as predefined one
+	 * For Dynamic Kernel Loading
+	 *   return address != NULL
+	 *   predefined address for ASAN project
+	 *     p_boot_hdr->tags_addr = KERNEL_MBLOCK_LIMIT - DTB_MAX_SIZE
+	 *     p_boot_hdr->kernel_addr = KERNEL_MBLOCK_LIMIT - LK_DYNAMIC_KERNEL_64_MAX_SIZE
+	 *     p_boot_hdr->ramdisk_addr = KERNEL_MBLOCK_LIMIT - ROUNDUP(LK_RAMDISK_MAX_SIZE, PAGE_SIZE)
+	 * For Static Kernel Loading
+	 *   return value != predefined address
+	 *   return address != NULL
+	 */
+	if ((!dtb_kernel_addr_mb) || ((dtb_kernel_addr_mb!=p_boot_hdr->tags_addr) && (p_boot_hdr->tags_addr != KERNEL_MBLOCK_LIMIT - DTB_MAX_SIZE))) {
 		pal_log_err("Warning! dtb_kernel_addr (0x%x) is not taken from mb (0x%x)\n", p_boot_hdr->tags_addr, dtb_kernel_addr_mb);
 		assert(0);
 	}
 
-	if ((!kernel_addr_mb) || (kernel_addr_mb!=p_boot_hdr->kernel_addr)) {
+	if ((!kernel_addr_mb) || ((kernel_addr_mb!=p_boot_hdr->kernel_addr) && (p_boot_hdr->kernel_addr != KERNEL_MBLOCK_LIMIT - kernel_sz_mb))) {
 		pal_log_err("Warning! kernel_addr (0x%x) is not taken from mb (0x%x)\n", p_boot_hdr->kernel_addr, kernel_addr_mb);
 		assert(0);
 	}
 
 	if (!skip_ramdisk_check) {
-		if ((!ramdisk_addr_mb) || (ramdisk_addr_mb!=p_boot_hdr->ramdisk_addr)) {
+		if ((!ramdisk_addr_mb) || ((ramdisk_addr_mb!=p_boot_hdr->ramdisk_addr) && (p_boot_hdr->ramdisk_addr != KERNEL_MBLOCK_LIMIT - ROUNDUP(LK_RAMDISK_MAX_SIZE, PAGE_SIZE)))) {
 			pal_log_err("Warning! ramdisk_addr (0x%x) is not taken from mb (0x%x)\n", p_boot_hdr->ramdisk_addr, ramdisk_addr_mb);
 			assert(0);
 		}
 	}
 
 #ifndef DUMMY_MEMORY_LAYOUT
-	/* Use memory_layout.h to check if overlap */
-	if ((dtb_kernel_addr_mb!=LK_DT_BASE)) {
+	/* Use memory_layout.h to check if overlap
+	 * Only need to check address with memory layout when p_boot_hdr->tags/ramdisk_addr is not 0
+	 */
+	if ((dtb_kernel_addr_mb!=LK_DT_BASE) && (p_boot_hdr->tags_addr != KERNEL_MBLOCK_LIMIT - DTB_MAX_SIZE)) {
 		pal_log_err("Warning! compare memory_layout.h with bootimg about DT\n");
 		assert(0);
 	}
 
 	if (!skip_ramdisk_check) {
-		if ((ramdisk_addr_mb!=LK_RAMDISK_BASE)||(ramdisk_sz_mb > LK_RAMDISK_MAX_SIZE)) {
+		if (((ramdisk_addr_mb!=LK_RAMDISK_BASE) && (p_boot_hdr->ramdisk_addr != KERNEL_MBLOCK_LIMIT - ramdisk_sz_mb)) || (ramdisk_sz_mb > LK_RAMDISK_MAX_SIZE)) {
 			pal_log_err("Warning! compare memory_layout.h with bootimg about ramdisk\n");
 			assert(0);
 		}
 	}
 #endif
+
+	/* update boot_hdr kernel/tags/ramdisk address */
+	p_boot_hdr->kernel_addr = kernel_addr_mb;
+	p_boot_hdr->tags_addr = dtb_kernel_addr_mb;
+	p_boot_hdr->ramdisk_addr = ramdisk_addr_mb;
 
 #endif
 }
@@ -527,26 +598,6 @@ SKIP_HIB_BOOT:
 		if (set_env("resume", '\0') != 0)
 			pal_log_err("lk_evn resume set resume failed!!!\n");
 }
-
-#if WITH_GZ_RELOAD_MBLOCK_INFO
-#define MTK_SIP_LK_MEM_INFO_SET_AARCH32 0x82000129
-#define MTK_SIP_LK_MEM_INFO_SET_AARCH64 0xC2000129
-static void update_mblock_info_to_gz(void)
-{
-	pal_log_info("SMC mblock info addr=%p, size=0x%x\n",
-		(void*)&g_boot_arg->mblock_info, sizeof(mblock_info_t));
-
-#ifdef MTK_SMC_ID_MGMT
-	mt_secure_call(MTK_SIP_LK_MEM_INFO_SET_AARCH32, &g_boot_arg->mblock_info,
-		sizeof(mblock_info_t), 0, 0);
-#else
-	mt_secure_call(MTK_SIP_LK_MEM_INFO_SET_AARCH32, &g_boot_arg->mblock_info,
-		sizeof(mblock_info_t), 0);
-#endif
-}
-#endif
-
-
 
 #ifdef DEVICE_TREE_SUPPORT
 
@@ -706,6 +757,9 @@ void get_reboot_reason(unsigned int boot_reason)
 		case BR_POWER_KEY:
 			cmdline_append("androidboot.bootreason=PowerKey");
 			return;
+		case BR_REBOOT_EXCEPTION:
+			cmdline_append("androidboot.bootreason=RebootException");
+			return;
 	}
 	/* default is soft reboot*/
 	cmdline_append("androidboot.bootreason=reboot");
@@ -725,22 +779,25 @@ int boot_linux_fdt(void *kernel, unsigned *tags,
 	void (*entry)(unsigned, unsigned, unsigned *) = kernel;
 	void *kernel_target_addr = kernel;
 	unsigned int lk_t = 0;
-	unsigned int pl_t = 0;
 	unsigned int boot_reason = 0;
 	char *ptr;
 	char spare[FDT_SPARE_SIZE],	/* SPARE_SIZE = BUFF_SIZE + CHCKER_SIZE */
 	     *buf 	= spare,
 		*checker 	= (spare + FDT_BUFF_SIZE);
-#ifdef KERNEL_DECOMPRESS_SIZE
-	int decompress_outbuf_size = KERNEL_DECOMPRESS_SIZE;
-#else
-#error KERNEL_DECOMPRESS_SIZE must be defined!
-#endif
 	unsigned int zimage_size = 0;
 	u32 seed[2];
-	const void *seedp;
-	int seed_len;
+	const void *seedp, *kaslr_status;
+	const void *kmemleak_status;
+	int seed_len, status_len;
 	uint32_t kernel_load_addr;
+
+#ifdef ALLOCATE_FROM_MBLOCK
+	if (!kernel_sz_mb)
+		panic("kernel_sz_mb should not be zero\n");
+#else
+	u32 kernel_sz_mb = LK_KERNEL_64_MAX_SIZE;
+#endif
+
 
 	kernel_load_addr = get_kernel_addr();
 	if (g_is_64bit_kernel) {
@@ -763,7 +820,7 @@ int boot_linux_fdt(void *kernel, unsigned *tags,
 		 * using 0x1C00000=28MB for decompressed kernel image size */
 		if (decompress_kernel((unsigned char *)(kernel_load_addr),
 				      (void *)kernel_target_addr, (int)zimage_size,
-				      (int)decompress_outbuf_size)) {
+				      (int)kernel_sz_mb)) {
 			panic("decompress kernel image fail!!!\n");
 		}
 	} else {
@@ -775,10 +832,6 @@ int boot_linux_fdt(void *kernel, unsigned *tags,
 	}
 	strncpy(checker, FDT_BUFF_END, FDT_CHECKER_SIZE - 1);
 	checker[FDT_CHECKER_SIZE - 1] = '\0';
-
-	if (dtb_dconfig_overlay(fdt) == FALSE) {
-		panic("dconfig DT overlay failed, system not bootable\n");
-	}
 
 	extern int target_fdt_jtag(void *fdt)__attribute__((weak));
 	if (target_fdt_jtag)
@@ -850,6 +903,20 @@ int boot_linux_fdt(void *kernel, unsigned *tags,
 		ret = set_fdt_emi_info(fdt);
 		if (ret)
 			pal_log_err("ERROR: EMI info incorrect\n");
+	}
+
+	extern int set_fdt_dramc(void *fdt)__attribute((weak));
+		if (set_fdt_dramc) {
+			ret = set_fdt_dramc(fdt);
+		if (ret)
+			pal_log_err("ERROR: DRAMC info incorrect\n");
+	}
+
+	extern int set_fdt_pll(void *fdt)__attribute((weak));
+	if (set_fdt_pll) {
+		ret = set_fdt_pll(fdt);
+		if (ret)
+			pal_log_err("ERROR: PLL info incorrect\n");
 	}
 
 	extern int target_fdt_dram_dummy_read(void *fdt,
@@ -942,6 +1009,15 @@ int boot_linux_fdt(void *kernel, unsigned *tags,
 #endif
 
 	offset = fdt_path_offset(fdt, "/chosen");
+	if (offset < 0) {
+		pal_log_err("Error: can't search chosen node in device tree\n");
+	}
+
+	kmemleak_status = fdt_getprop(fdt, offset,
+					"kmemleak-status", &status_len);
+	if (kmemleak_status && !strcmp(kmemleak_status, "okay"))
+		cmdline_append("kmemleak=on");
+
 	ret = fdt_setprop_cell(fdt, offset, "linux,initrd-start",
 			       (unsigned int) ramdisk);
 	if (ret) {
@@ -976,12 +1052,18 @@ int boot_linux_fdt(void *kernel, unsigned *tags,
 		get_rnd(&seed[1]);
 #else
 		seed[0] = seed[1] = 0;
+		cmdline_append("nokaslr");
 #endif
 		ret = fdt_setprop(fdt, offset, "kaslr-seed", seed, seed_len);
 		if (ret) {
 			assert(0);
 			return FALSE;
 		}
+
+		kaslr_status = fdt_getprop(fdt, offset,
+				"kaslr-status", &status_len);
+		if (kaslr_status && !strcmp(kaslr_status, "disabled"))
+			cmdline_append("nokaslr");
 	}
 
 #if defined(MTK_DLPT_SUPPORT)
@@ -995,18 +1077,30 @@ int boot_linux_fdt(void *kernel, unsigned *tags,
 	snprintf(buf, FDT_BUFF_SIZE, "%d", fg_swocv_v);
 	ptr = buf + strlen(buf);
 	ret = fdt_setprop(fdt, offset, "atag,fg_swocv_v", buf, ptr - buf);
+	if (ret) {
+		assert(0);
+		return FALSE;
+	}
 	pal_log_err("fg_swocv_v buf [%s], [0x%x:0x%x:%d]\n", buf, (unsigned)buf,
 		(unsigned)ptr, ptr - buf);
 
 	snprintf(buf, FDT_BUFF_SIZE, "%d", fg_swocv_i);
 	ptr = buf + strlen(buf);
 	ret = fdt_setprop(fdt, offset, "atag,fg_swocv_i", buf, ptr - buf);
+	if (ret) {
+		assert(0);
+		return FALSE;
+	}
 	pal_log_err("fg_swocv_i buf [%s], [0x%x:0x%x:%d]\n", buf, (unsigned)buf,
 		(unsigned)ptr, ptr - buf);
 
 	snprintf(buf, FDT_BUFF_SIZE, "%d", shutdown_time);
 	ptr = buf + strlen(buf);
 	ret = fdt_setprop(fdt, offset, "atag,shutdown_time", buf, ptr - buf);
+	if (ret) {
+		assert(0);
+		return FALSE;
+	}
 	pal_log_err("shutdown_time buf [%s], [0x%x:0x%x:%d]\n", buf,
 		(unsigned)buf, (unsigned)ptr, ptr - buf);
 
@@ -1015,12 +1109,20 @@ int boot_linux_fdt(void *kernel, unsigned *tags,
 	snprintf(buf, FDT_BUFF_SIZE, "%d", boot_voltage);
 	ptr = buf + strlen(buf);
 	ret = fdt_setprop(fdt, offset, "atag,boot_voltage", buf, ptr - buf);
+	if (ret) {
+		assert(0);
+		return FALSE;
+	}
 	pal_log_err("boot_voltage buf [%s], [0x%x:0x%x:%d]\n", buf, (unsigned)buf,
 		(unsigned)ptr, ptr - buf);
 
 	snprintf(buf, FDT_BUFF_SIZE, "%d", two_sec_reboot);
 	ptr = buf + strlen(buf);
 	ret = fdt_setprop(fdt, offset, "atag,two_sec_reboot", buf, ptr - buf);
+	if (ret) {
+		assert(0);
+		return FALSE;
+	}
 	pal_log_err("boot_voltage buf [%s], [0x%x:0x%x:%d]\n", buf, (unsigned)buf,
 		(unsigned)ptr, ptr - buf);
 
@@ -1053,6 +1155,9 @@ int boot_linux_fdt(void *kernel, unsigned *tags,
 		}
 	}
 #endif
+	extern int spislv_write_param_to_dt(void *fdt)__attribute__((weak));
+	spislv_write_param_to_dt(fdt);
+
 	extern unsigned int *target_atag_vcore_dvfs(unsigned * ptr)__attribute__((
 				weak));
 	if (target_atag_vcore_dvfs) {
@@ -1222,6 +1327,13 @@ int boot_linux_fdt(void *kernel, unsigned *tags,
 	} else
 		pal_log_err("non_secure_sram not supported\n");
 
+	if(disp_lcm_fill_lcm_dts_phandle) {
+		int panel_index = disp_lcm_get_dts_panel_index();
+		if(disp_lcm_fill_lcm_dts_phandle(fdt, panel_index) != 0) {
+		    pal_log_err("set dsi panel index to dtb failed.");
+		}
+	}
+
 	if (!has_set_p2u) {
 		switch (eBuildType) {
 		case BUILD_TYPE_USER:
@@ -1231,9 +1343,9 @@ int boot_linux_fdt(void *kernel, unsigned *tags,
 #else
 		      (is_meta_log_disable() == 0)))
 #endif
-				cmdline_append("printk.disable_uart=0");
+				cmdline_append("mtk_printk_ctrl.disable_uart=0");
 			else
-				cmdline_append("printk.disable_uart=1");
+				cmdline_append("mtk_printk_ctrl.disable_uart=1");
 			break;
 
 		case BUILD_TYPE_USERDEBUG:
@@ -1243,46 +1355,29 @@ int boot_linux_fdt(void *kernel, unsigned *tags,
 #else
 			    (is_meta_log_disable() == 1))
 #endif
-				cmdline_append("printk.disable_uart=1 slub_debug=O");
+				cmdline_append("mtk_printk_ctrl.disable_uart=1 slub_debug=O");
 #ifdef LOG_STORE_SUPPORT
 			else if (boot_ftrace && g_boot_arg->log_dynamic_switch == 0)
 #else
 			else if (boot_ftrace)
 #endif
-				cmdline_append("printk.disable_uart=1 slub_debug=-");
+				cmdline_append("mtk_printk_ctrl.disable_uart=1 slub_debug=-");
 			else
-				cmdline_append("printk.disable_uart=0");
+				cmdline_append("mtk_printk_ctrl.disable_uart=0");
 			break;
 
 		case BUILD_TYPE_ENG:
 			if ((g_boot_mode == META_BOOT) && is_meta_log_disable &&
 			    (is_meta_log_disable() == 1))
-				cmdline_append("printk.disable_uart=1 slub_debug=O");
+				cmdline_append("mtk_printk_ctrl.disable_uart=1 slub_debug=O");
 			else
-				cmdline_append("printk.disable_uart=0 ddebug_query=\"file *mediatek* +p ; file *gpu* =_\"");
+				cmdline_append("mtk_printk_ctrl.disable_uart=0 ddebug_query=\"file *mediatek* +p ; file *gpu* =_\"");
 			break;
 
 		default:
 			assert(0);
 			break;
 		}
-
-		/*Append pre-loader boot time to kernel command line*/
-		pl_t = g_boot_arg->boot_time;
-		snprintf(tmpbuf, TMPBUF_SIZE, "%s%d", "bootprof.pl_t=", pl_t);
-		cmdline_append(tmpbuf);
-		/*Append lk boot time to kernel command line*/
-		lk_t = ((unsigned int)get_timer(boot_time));
-		snprintf(tmpbuf, TMPBUF_SIZE, "%s%d", "bootprof.lk_t=", lk_t);
-		cmdline_append(tmpbuf);
-
-		if (logo_lk_t != 0) {
-			snprintf(tmpbuf, TMPBUF_SIZE, "%s%d", "bootprof.logo_t=", logo_lk_t);
-			cmdline_append(tmpbuf);
-		}
-
-		PROFILING_PRINTF("1st logo takes %d ms", logo_lk_t);
-		PROFILING_PRINTF("boot_time takes %d ms", lk_t);
 	}
 	/*Append pre-loader boot reason to kernel command line*/
 #ifdef MTK_KERNEL_POWER_OFF_CHARGING
@@ -1333,7 +1428,7 @@ int boot_linux_fdt(void *kernel, unsigned *tags,
 
 	/*DTS memory will be modified during lk boot process
 	 * so we need to put the cmdline in the last mile*/
-	mrdump_append_cmdline(fdt);
+	mrdump_init(fdt);
 
 #if 0
 	ptr = (char *)target_atag_commandline((u8 *)buf, FDT_BUFF_SIZE,
@@ -1357,6 +1452,14 @@ int boot_linux_fdt(void *kernel, unsigned *tags,
 		assert(0);
 		return FALSE;
 	}
+	ptr = (char *)target_atag_chipid((unsigned *)buf);
+	if (ptr != NULL) {
+		ret = fdt_setprop(fdt, offset, "atag,chipid", buf, ptr - buf);
+		if (ret) {
+			dprintf(CRITICAL, "fail to set property chip id in fdt!\n");
+		}
+	} else
+		dprintf(CRITICAL, "target_atag_chipid return NULL pointer!\n");
 
 	extern int *target_fdt_firmware(void *fdt, char *serialno)__attribute__((weak));
 	if (target_fdt_firmware)
@@ -1364,12 +1467,13 @@ int boot_linux_fdt(void *kernel, unsigned *tags,
 
 	/* This depends on target_fdt_firmware, must after target_fdt_firmware */
 	ccci_update_md_opt_to_fdt_firmware(fdt);
-
 	/* Return the mb before stepping into kernel */
 	mboot_free_bootimg_from_mblock();
 	mboot_free_lk_scratch_from_mblock();
+	free_bootimgs();
 	mt_free_logo_from_mblock();
 	mrdump_reserve_memory();
+	heap_deinit();
 
 #if defined(MBLOCK_LIB_SUPPORT)
 #if	defined(MBLOCK_LIB_SUPPORT) && (MBLOCK_EXPAND(MBLOCK_LIB_SUPPORT) == MBLOCK_EXPAND(2))
@@ -1390,6 +1494,17 @@ int boot_linux_fdt(void *kernel, unsigned *tags,
 #endif
 
 	ccci_create_MD_attr_dt_node(fdt);
+
+	/* bootprof: pl/lk/logo_lk_t boot time via Device Tree */
+	/* Last execution time of LK */
+	ret = boot_time_via_dt(fdt, &lk_t);
+	if (ret) {
+		assert(0);
+		return FALSE;
+	}
+
+	PROFILING_PRINTF("1st logo takes %d ms", logo_lk_t);
+	PROFILING_PRINTF("boot_time takes %d ms", lk_t);
 
 	ret = fdt_pack(fdt);
 	if (ret) {
@@ -1462,7 +1577,6 @@ int boot_linux_fdt(void *kernel, unsigned *tags,
 #endif
 
 	cmdline_print();
-	pal_log_err("lk boot time = %d ms\n", lk_t);
 	pal_log_err("lk boot mode = %d\n", g_boot_mode);
 	pal_log_err("lk boot reason = %d\n", boot_reason);
 	pal_log_err("lk finished --> jump to linux kernel %s\n\n",
@@ -1475,6 +1589,8 @@ int boot_linux_fdt(void *kernel, unsigned *tags,
 	 * Of course watchdog will still be triggered if kernel hangs
 	 * because watchdog is still alive.
 	 */
+	mtk_timer_deinit();
+	mtk_wdt_set_time_out_value(30);
 	mtk_wdt_restart();
 
 #ifdef USER_LOAD
@@ -1486,10 +1602,6 @@ int boot_linux_fdt(void *kernel, unsigned *tags,
 			uart_puts((char *)current_lk_buf_addr_get());
 		}
 	}
-#endif
-
-#if WITH_GZ_RELOAD_MBLOCK_INFO
-	update_mblock_info_to_gz();
 #endif
 
 	if (Debug_log_EMI_MPU)
@@ -1535,9 +1647,15 @@ void get_AB_OTA_param(void)
 
 void get_AB_OTA_name(char *part_name, int size)
 {
+	int ret;
+
 	if (!p_AB_suffix)
 		get_AB_OTA_param();
-	snprintf(part_name, size, "%s%s", part_name, p_AB_suffix);
+	ret = snprintf(part_name, size, "%s%s", part_name, p_AB_suffix);
+
+	if (ret <= 0)
+		pal_log_err("[%s:%d] %s get part_name fail\n", __func__,
+		__LINE__, part_name);
 }
 #endif /* MTK_AB_OTA_UPDATER */
 
@@ -1547,7 +1665,6 @@ int boot_linux_from_storage(void)
 	uint32_t kernel_target_addr = 0;
 	uint32_t ramdisk_target_addr = 0;
 	uint32_t tags_target_addr = 0;
-	uint32_t ramdisk_addr = 0;
 	uint32_t ramdisk_real_sz = 0;
 #if defined(CFG_NAND_BOOT)
 #define CMDLINE_TMP_CONCAT_SIZE 110
@@ -1570,6 +1687,10 @@ int boot_linux_from_storage(void)
 		cmdline_append(cmdline_tmpbuf);
 #endif
 		ret = load_vfy_boot(BOOTIMG_TYPE_BOOT, CFG_BOOTIMG_LOAD_ADDR);
+		ret = (int)handle_vboot_state(BOOTIMG_TYPE_BOOT);
+		if (ret != STATUS_OK)
+			mtk_arch_reset(1);
+
 		PAL_ASSERT(ret >= 0);
 
 		PROFILING_END();
@@ -1580,10 +1701,13 @@ int boot_linux_from_storage(void)
 		 * recovery.img when system as root is disabled. *
 		 */
 		PROFILING_START("load recovery image");
-
-		ret = load_vfy_boot(BOOTIMG_TYPE_RECOVERY, CFG_BOOTIMG_LOAD_ADDR);
-		PAL_ASSERT(ret >= 0);
-
+		if (!get_recovery_img_loaded()) {
+			ret = load_vfy_boot(BOOTIMG_TYPE_RECOVERY, CFG_BOOTIMG_LOAD_ADDR);
+			ret = (int)handle_vboot_state(BOOTIMG_TYPE_RECOVERY);
+			if (ret != STATUS_OK)
+				mtk_arch_reset(1);
+			PAL_ASSERT(ret >= 0);
+		}
 		PROFILING_END();
 		break;
 
@@ -1597,6 +1721,10 @@ int boot_linux_from_storage(void)
 		cmdline_append(cmdline_tmpbuf);
 #endif
 		ret = load_vfy_boot(BOOTIMG_TYPE_BOOT, CFG_BOOTIMG_LOAD_ADDR);
+		ret = (int)handle_vboot_state(BOOTIMG_TYPE_BOOT);
+		if (ret != STATUS_OK)
+			mtk_arch_reset(1);
+
 		PAL_ASSERT(ret >= 0);
 
 		PROFILING_END();
@@ -1609,25 +1737,10 @@ int boot_linux_from_storage(void)
 
 	}
 	kernel_target_addr = get_kernel_target_addr();
-	ramdisk_target_addr = get_ramdisk_target_addr();
-	ramdisk_addr = get_ramdisk_addr();
-	ramdisk_real_sz = get_ramdisk_real_sz();
 	tags_target_addr = get_tags_addr();
 
 	PAL_ASSERT(kernel_target_addr != 0);
-	PAL_ASSERT(ramdisk_target_addr != 0);
-	PAL_ASSERT(ramdisk_addr != 0);
-#if (!defined(SYSTEM_AS_ROOT) && !defined(MTK_RECOVERY_RAMDISK_SPLIT))
-	PAL_ASSERT(ramdisk_real_sz != 0);
-#endif
 
-#ifdef MTK_3LEVEL_PAGETABLE
-	/* rootfs addr */
-	arch_mmu_map((uint64_t)ramdisk_target_addr,
-		(uint32_t)ramdisk_target_addr,
-		MMU_MEMORY_TYPE_NORMAL_WRITE_BACK | MMU_MEMORY_AP_P_RW_U_NA,
-		ROUNDUP(LK_RAMDISK_MAX_SIZE, PAGE_SIZE));
-#endif
 #ifdef MTK_RECOVERY_RAMDISK_SPLIT
 	if (g_boot_mode == RECOVERY_BOOT) {
 		uint32_t ramdisk_compressed_sz;
@@ -1636,10 +1749,9 @@ int boot_linux_from_storage(void)
 	}
 	else
 #endif /* MTK_RECOVERY_RAMDISK_SPLIT */
-	/* relocate rootfs */
-	memcpy((void *)ramdisk_target_addr,
-		(void *)ramdisk_addr,
-		(size_t)ramdisk_real_sz);
+{
+	relocate_ramdisk(&ramdisk_target_addr, &ramdisk_real_sz);
+}
 	/*
 	 * merge dtb's bootargs with customized cmdline
 	 * as early as possible
@@ -1647,9 +1759,6 @@ int boot_linux_from_storage(void)
 	bootargs_init((void *)tags_target_addr);
 
 	custom_port_in_kernel(g_boot_mode, cmdline_get());
-
-	/* append cmdline from bootimg hdr */
-	cmdline_append(get_cmdline());
 
 #ifdef SELINUX_STATUS
 #if SELINUX_STATUS == 1
@@ -1702,6 +1811,7 @@ int boot_linux_from_storage(void)
 
 	/* pass related root of trust info via SMC call */
 	send_root_of_trust_info();
+	set_boot_phase(BOOT_PHASE_KERNEL);
 
 	boot_linux((void *)kernel_target_addr,
 			(unsigned *)tags_target_addr,
@@ -1756,21 +1866,42 @@ int get_serial(u64 hwkey, u32 chipid, char ser[SERIALNO_LEN])
 
 #ifdef SERIAL_NUM_FROM_BARCODE
 static inline int read_product_info(char *buf)
-{
-	int tmp = 0;
+{	
+	#define PROINFO_OFFSET 116 // barcode:64 + imei:40 + bt:6 + wifi:6
+	#define BLK_SIZE  512
+    int tmp = 0;
+    char * buf_blk = (char *)0;
 
-	if (!buf) return 0;
+    if (!buf) return 0;
 
-	mboot_recovery_load_raw_part("proinfo", buf, SN_BUF_LEN);
+    buf_blk = malloc(BLK_SIZE);
+    if (!buf_blk)
+    {
+        dprintf(CRITICAL, "[error] alloc proinfo buffer fail.\n");
+        return 0;
+    }
+    memset(buf_blk, 0, BLK_SIZE);
 
-	for (; tmp < SN_BUF_LEN; tmp++) {
-		if ((buf[tmp] == 0 || buf[tmp] == 0x20) && tmp > 0)
-			break;
+    dprintf(CRITICAL, "begin read proinfo\n");
+    tmp = mboot_recovery_load_raw_part("proinfo", buf_blk, BLK_SIZE);
+    if (tmp != BLK_SIZE)
+    {
+        dprintf(CRITICAL, "[error] read proinfo fail, only read size %d, block size %d.\n", tmp, BLK_SIZE);
+        free(buf_blk);
+        return 0;
+    }
+    memcpy(buf, buf_blk + PROINFO_OFFSET, SN_BUF_LEN);
+    buf[SN_BUF_LEN] = '\0';
+    dprintf(CRITICAL, "get serialno from proinfo: \"%s\"\n", buf);
+    free(buf_blk);
 
-		else if (!isalpha(buf[tmp]) && !isdigit(buf[tmp]))
-			break;
-	}
-	return tmp;
+    for (tmp = 0; tmp < SN_BUF_LEN; tmp++) {
+        if ( (buf[tmp] == 0 || buf[tmp] == 0x20) && tmp > 0) {
+            break;
+        } else if ( !isalpha(buf[tmp]) && !isdigit(buf[tmp]))
+            return 0;
+    }
+    return tmp;
 }
 #endif
 
@@ -1875,9 +2006,6 @@ void mt_boot_init(const struct app_descriptor *app)
 {
 	unsigned usb_init = 0;
 	unsigned sz = 0;
-#ifdef MTK_AB_OTA_UPDATER
-	int ret;
-#endif
 
 	set_serial_num();
 
