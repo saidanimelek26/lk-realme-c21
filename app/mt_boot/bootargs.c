@@ -1,3 +1,4 @@
+
 /* Copyright Statement:
 *
 * This software/firmware and related documentation ("MediaTek Software") are
@@ -65,7 +66,7 @@ void bootargs_init(void *fdt)
 {
 #ifdef DEVICE_TREE_SUPPORT
 	int offset;
-	int len;
+	int len, n;
 	const void *fdt_bootargs = NULL;
 	const void *fdt_bootargs_ext = NULL;
 	char *temp_ptr = NULL;
@@ -86,7 +87,9 @@ void bootargs_init(void *fdt)
 		g_cmdline_strlen = strlen(g_cmdline);
 		temp_ptr = (char *)malloc(g_cmdline_strlen + 1);
 		assert(temp_ptr);
-		snprintf(temp_ptr, (g_cmdline_strlen + 1), "%s", g_cmdline);
+		n = snprintf(temp_ptr, (g_cmdline_strlen + 1), "%s", g_cmdline);
+		if (n < 0)
+			dprintf(INFO, "snprintf error in %s:%d\n", __FILE__, __LINE__);
 	}
 	/* Reset cmdline_tail */
 	cmdline_tail = g_cmdline;
@@ -94,7 +97,11 @@ void bootargs_init(void *fdt)
 	fdt_bootargs = fdt_getprop(fdt, offset,
 			"bootargs", &len);
 	assert(fdt_bootargs);
-	cmdline_tail += snprintf(cmdline_tail, CMDLINE_LEN, "%s", (char *)fdt_bootargs);
+	n = snprintf(cmdline_tail, CMDLINE_LEN, "%s", (char *)fdt_bootargs);
+	if (n < 0)
+		dprintf(INFO, "snprintf error in %s:%d\n", __FILE__, __LINE__);
+	else
+		cmdline_tail += n;
 	/*
 	 * According to DeviceTreeOverlayGuide.pdf, bootloader should
 	 * concatenate bootargs in main dtb with bootargs_ext in dtbo.
@@ -102,11 +109,21 @@ void bootargs_init(void *fdt)
 	fdt_bootargs_ext = fdt_getprop(fdt, offset,
 			"bootargs_ext", &len);
 	if (fdt_bootargs_ext != NULL) {
-		if (*(char *)fdt_bootargs_ext != 0)
-			cmdline_tail += snprintf(cmdline_tail, cmdline_end - cmdline_tail, " %s", (char *)fdt_bootargs_ext);
+		if (*(char *)fdt_bootargs_ext != 0) {
+			n = snprintf(cmdline_tail, cmdline_end - cmdline_tail, " %s", (char *)fdt_bootargs_ext);
+			if (n < 0)
+				dprintf(INFO, "snprintf error in %s:%d\n", __FILE__, __LINE__);
+			else
+				cmdline_tail += n;
+		}
 	}
-	if (temp_ptr != 0)
-		cmdline_tail += snprintf(cmdline_tail, cmdline_end - cmdline_tail, "%s", temp_ptr);
+	if (temp_ptr != 0) {
+		n = snprintf(cmdline_tail, cmdline_end - cmdline_tail, "%s", temp_ptr);
+		if (n < 0)
+			dprintf(INFO, "snprintf error in %s:%d\n", __FILE__, __LINE__);
+		else
+			cmdline_tail += n;
+	}
 
 	bootargs_inited = 1;
 exit:
@@ -195,7 +212,7 @@ bool cmdline_overwrite(const char *overwrite_string)
 
 bool cmdline_clear_string(void)
 {
-	int i = 0;
+	unsigned int i = 0;
 	char *ptr = NULL;
 
 	/* search parameters from cmdline */
