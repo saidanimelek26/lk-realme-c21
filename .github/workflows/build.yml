@@ -37,7 +37,7 @@ jobs:
     - name: Build LK
       run: |
         export python=python2
-        touch ./main_dtb_header.bin
+        touch ./realme_c21_lk.dtb
         TOOLCHAIN_PREFIX=~/gcc-toolchain/bin/arm-linux-androideabi- make k65v1_64_bsp
 
     - name: Show build output (debug)
