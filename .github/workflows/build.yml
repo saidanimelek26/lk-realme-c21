@@ -37,8 +37,7 @@ jobs:
     - name: Build LK
       run: |
         export python=python2
-        touch ./main_dtb_header.bin
-        TOOLCHAIN_PREFIX=~/gcc-toolchain/bin/arm-linux-androideabi- make k65v1_64_bsp
+        TOOLCHAIN_PREFIX=~/gcc-toolchain/bin/arm-linux-androideabi- make -j2 k65v1_64_bsp
 
     - name: Show build output (debug)
       run: ls -lh build-k65v1_64_bsp/
@@ -48,6 +47,7 @@ jobs:
       with:
         name: lk-build-output
         path: |
+          build-k65v1_64_bsp/lk-dtb.img
           build-k65v1_64_bsp/lk.img
           build-k65v1_64_bsp/lk-verified.img
           build-k65v1_64_bsp/lk.sym
