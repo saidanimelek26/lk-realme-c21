@@ -37,6 +37,7 @@ endif
 LK_TOP_DIR:= .
 BUILDDIR := $(BOOTLOADER_OUT)/build-$(PROJECT)
 OUTBIN := $(BUILDDIR)/lk.img
+OUTDTB := $(BUILDDIR)/lk-dtb.img
 OUTELF := $(BUILDDIR)/lk
 CONFIGHEADER := $(BUILDDIR)/config.h
 VERSIONHEADER := $(BUILDDIR)/version.h
