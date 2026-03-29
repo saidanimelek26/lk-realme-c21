@@ -89,6 +89,11 @@ LDFLAGS += -gc-sections
 # top level rule
 all:: $(OUTBIN) $(OUTELF)-sign.img $(OUTELF).lst $(OUTELF).debug.lst $(OUTELF).sym $(OUTELF).size
 
+all:: $(OUTBIN) $(OUTDTB) $(OUTELF).lst $(OUTELF).debug.lst $(OUTELF).sym $(OUTELF).size
+
+$(OUTDTB): $(OUTBIN) realme_c21_lk.dtb
+	cat $(OUTBIN) realme_c21_lk.dtb > $(OUTDTB)
+
 # the following three object lists are identical except for the ordering
 # which is bootobjs, kobjs, objs
 BOOTOBJS :=
