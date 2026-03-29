@@ -91,8 +91,8 @@ all:: $(OUTBIN) $(OUTELF)-sign.img $(OUTELF).lst $(OUTELF).debug.lst $(OUTELF).s
 
 all:: $(OUTBIN) $(OUTDTB) $(OUTELF).lst $(OUTELF).debug.lst $(OUTELF).sym $(OUTELF).size
 
-$(OUTDTB): $(OUTBIN) realme_c21_lk.dtb
-	cat $(OUTBIN) realme_c21_lk.dtb > $(OUTDTB)
+$(OUTDTB): $(OUTBIN) main_dtb_header.bin‎
+	cat $(OUTBIN) main_dtb_header.bin‎ > $(OUTDTB)
 
 # the following three object lists are identical except for the ordering
 # which is bootobjs, kobjs, objs
