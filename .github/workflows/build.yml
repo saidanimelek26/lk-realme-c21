@@ -37,7 +37,8 @@ jobs:
     - name: Build LK
       run: |
         export python=python2
-        TOOLCHAIN_PREFIX=~/gcc-toolchain/bin/arm-linux-androideabi- make -j2 k65v1_64_bsp
+        touch ./main_dtb_header.bin
+        TOOLCHAIN_PREFIX=~/gcc-toolchain/bin/arm-linux-androideabi- make k65v1_64_bsp
 
     - name: Show build output (debug)
       run: ls -lh build-k65v1_64_bsp/
