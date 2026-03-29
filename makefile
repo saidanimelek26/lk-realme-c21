@@ -37,7 +37,6 @@ endif
 LK_TOP_DIR:= .
 BUILDDIR := $(BOOTLOADER_OUT)/build-$(PROJECT)
 OUTBIN := $(BUILDDIR)/lk.img
-OUTDTB := $(BUILDDIR)/lk-dtb.img
 OUTELF := $(BUILDDIR)/lk
 CONFIGHEADER := $(BUILDDIR)/config.h
 VERSIONHEADER := $(BUILDDIR)/version.h
@@ -88,11 +87,6 @@ LDFLAGS += -gc-sections
 
 # top level rule
 all:: $(OUTBIN) $(OUTELF)-sign.img $(OUTELF).lst $(OUTELF).debug.lst $(OUTELF).sym $(OUTELF).size
-
-all:: $(OUTBIN) $(OUTDTB) $(OUTELF).lst $(OUTELF).debug.lst $(OUTELF).sym $(OUTELF).size
-
-$(OUTDTB): $(OUTBIN) main_dtb_header.bin‎
-	cat $(OUTBIN) main_dtb_header.bin‎ > $(OUTDTB)
 
 # the following three object lists are identical except for the ordering
 # which is bootobjs, kobjs, objs
