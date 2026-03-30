@@ -1443,9 +1443,8 @@ int boot_linux_fdt(void *kernel, unsigned *tags,
 	dprintf(INFO, "target_atag_commandline skip for not used\n"); //skip copy atag for kernel not used
 
 #endif
-	/* send kernel the dtbo_idx upon overlay success */
-	snprintf(tmpbuf, TMPBUF_SIZE, "androidboot.dtb_idx=0 androidboot.dtbo_idx=%d", get_dtbo_index());
-	cmdline_append(tmpbuf);
+	/* Use the exact cmdline from working device */
+cmdline_overwrite("console=tty0 console=ttyS0,921600n1 vmalloc=400M slub_debug=OFZPU page_owner=on swiotlb=noforce androidboot.hardware=mt6765 maxcpus=8 loop.max_part=7 firmware_class.path=/vendor/firmware has_battery_removed=0 androidboot.boot_devices=bootdevice,soc/11230000.mmc,11230000.mmc ramoops.mem_address=0x47c90000 ramoops.mem_size=0xe0000 ramoops.pmsg_size=0x10000 ramoops.console_size=0x40000 phx_rus_conf.main_on=1 phx_rus_conf.recovery_method=2 phx_rus_conf.kernel_time=240 phx_rus_conf.android_time=250 androidboot.sbootstate=on bootopt=64S3,32N2,64N2 buildvariant=user root=/dev/ram androidboot.vbmeta.device=PARTUUID=85a5b02f-3773-18b3-1049-718cde95107e androidboot.vbmeta.avb_version=1.1 androidboot.vbmeta.device_state=unlocked androidboot.veritymode=enforcing androidboot.veritymode.managed=yes androidboot.verifiedbootstate=orange oppo_boot_mode=0 simcardnum.doublesim=1 lcm=1-hx83102d_truly_truly--1-fps=6052 is_lm3697=1 androidboot.atm=disabled androidboot.meta_log_disable=0  androidboot.prjname=20701 mtk_printk_ctrl.disable_uart=1 lcdgateic=OCP2130 androidboot.serialno=JN9PLJSGOFQKIVLF ogauge_auth=LNLGLCAO@MADJJFHKBGBENEDLAOHLACIC@LANLDNMAI@FMLMDILLNOLJLBNKALGJMNBGEEOFAHAIALON androidboot.bootreason=reboot gpt=1 usb2jtag_mode=0 androidboot.dtbo_idx=1");
 
 	ret = fdt_setprop_string(fdt, offset, "bootargs", (char *)cmdline_get());
 	if (ret) {
