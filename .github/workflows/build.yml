@@ -20,10 +20,9 @@ jobs:
         sudo ln -s /usr/bin/python2 /usr/local/bin/python
         python --version
 
-    - name: Install u-boot-tools (for mkimage)
+    - name: Install dependencies
       run: |
-        sudo apt-get install -y u-boot-tools
-        mkimage -V
+        sudo apt-get install -y device-tree-compiler
 
     - name: Cache GCC toolchain
       id: cache-gcc
@@ -39,36 +38,6 @@ jobs:
         cd ~/gcc-toolchain
         git checkout e9b2ab0932573a0ca90cad11ab75d9619f19c458
 
-    - name: Create dtb.cfg file
-      run: |
-        echo "NAME = lk_main_dtb" > dtb.cfg
-        cat dtb.cfg
-
-    - name: Check DTB file exists
-      run: |
-        if [ -f dtb/realme_c21_lk.dtb ]; then
-          echo "✅ DTB file found"
-          ls -lh dtb/realme_c21_lk.dtb
-          hexdump -C dtb/realme_c21_lk.dtb | head -3
-        else
-          echo "❌ DTB file not found at dtb/realme_c21_lk.dtb"
-          echo "Listing dtb folder:"
-          ls -la dtb/ || echo "dtb folder does not exist"
-          exit 1
-        fi
-
-    - name: Create proper MediaTek DTB header using mkimage
-      run: |
-        # Create DTB with proper U-Boot header
-        mkimage -A arm -O linux -T flat_dt -C none -a 0x0 -e 0x0 -d dtb/realme_c21_lk.dtb dtb_with_uboot_header.bin
-        
-        echo "✅ DTB with U-Boot header created:"
-        ls -lh dtb_with_uboot_header.bin
-        
-        # Show header for verification
-        echo "Header preview:"
-        hexdump -C dtb_with_uboot_header.bin | head -5
-
     - name: Build LK
       run: |
         export python=python2
@@ -77,16 +46,73 @@ jobs:
     - name: Show build output
       run: ls -lh build-k65v1_64_bsp/
 
-    - name: Append DTB to lk-dtb.img
+    - name: Create dtb.cfg file
       run: |
-        LK_IMAGE="build-k65v1_64_bsp/lk-dtb.img"
-        
-        if [ ! -f "$LK_IMAGE" ]; then
-          echo "⚠️ lk-dtb.img not found, trying lk.img"
-          LK_IMAGE="build-k65v1_64_bsp/lk.img"
+        echo "NAME = lk_main_dtb" > dtb.cfg
+        cat dtb.cfg
+
+    - name: Check DTB file
+      run: |
+        if [ -f dtb/realme_c21_lk.dtb ]; then
+          echo "✅ DTB file found"
+          ls -lh dtb/realme_c21_lk.dtb
+        else
+          echo "❌ DTB file not found"
+          exit 1
         fi
+
+    - name: Create MediaTek DTB header using Python
+      run: |
+        python3 << 'EOF'
+        import struct
+        import os
         
-        if [ ! -f "$LK_IMAGE" ]; then
+        # Read the DTB file
+        with open("dtb/realme_c21_lk.dtb", "rb") as f:
+            dtb_data = f.read()
+        
+        print(f"DTB size: {len(dtb_data)} bytes")
+        
+        # MediaTek header structure (32 bytes):
+        # - 16 bytes: name (null-padded)
+        # - 4 bytes: version? (optional)
+        # - 12 bytes: reserved/zeros
+        
+        # Create the header with the correct name
+        name = "lk_main_dtb"
+        header = bytearray(32)
+        
+        # Write the name (max 16 bytes)
+        name_bytes = name.encode('ascii')
+        header[0:len(name_bytes)] = name_bytes
+        
+        # The rest of the header remains zeros
+        
+        # Combine header + DTB
+        dtb_with_header = bytes(header) + dtb_data
+        
+        print(f"Header size: 32 bytes")
+        print(f"Total package size: {len(dtb_with_header)} bytes")
+        
+        # Show header preview
+        print("Header (first 16 bytes):")
+        print(" ".join(f"{b:02x}" for b in header[:16]))
+        
+        # Save the combined file
+        with open("dtb_with_header.bin", "wb") as f:
+            f.write(dtb_with_header)
+        
+        print("✅ dtb_with_header.bin created")
+        EOF
+
+    - name: Append DTB to LK image
+      run: |
+        # Find the LK image
+        if [ -f "build-k65v1_64_bsp/lk-dtb.img" ]; then
+          LK_IMAGE="build-k65v1_64_bsp/lk-dtb.img"
+        elif [ -f "build-k65v1_64_bsp/lk.img" ]; then
+          LK_IMAGE="build-k65v1_64_bsp/lk.img"
+        else
           echo "❌ No LK image found!"
           exit 1
         fi
@@ -99,40 +125,48 @@ jobs:
         cp $LK_IMAGE ${LK_IMAGE}.backup
         
         # Append DTB with header
-        cat dtb_with_uboot_header.bin >> $LK_IMAGE
+        cat dtb_with_header.bin >> $LK_IMAGE
         
         echo "After append:"
         ls -lh $LK_IMAGE
         
-        # Verify magic number at the end
-        echo "Checking end of file for magic number:"
-        tail -c 64 $LK_IMAGE | hexdump -C
-        
         echo "✅ DTB appended successfully!"
 
-    - name: Verify LK image magic numbers
+    - name: Verify LK image
       run: |
-        LK_IMAGE="build-k65v1_64_bsp/lk-dtb.img"
-        if [ ! -f "$LK_IMAGE" ]; then
+        if [ -f "build-k65v1_64_bsp/lk-dtb.img" ]; then
+          LK_IMAGE="build-k65v1_64_bsp/lk-dtb.img"
+        else
           LK_IMAGE="build-k65v1_64_bsp/lk.img"
         fi
         
-        echo "=== Verifying LK image headers ==="
+        echo "=== Verification ==="
+        echo "File size:"
+        ls -lh $LK_IMAGE
+        
+        echo ""
         echo "First 32 bytes (should start with 88 16 88 58):"
         hexdump -C $LK_IMAGE | head -3
         
         echo ""
-        echo "Looking for second magic number (should be 88 16 88 58 at DTB offset):"
-        # Search for magic number pattern in the file
-        hexdump -C $LK_IMAGE | grep "88 16 88 58" || echo "⚠️ Magic number pattern not found - DTB may not be properly appended"
+        echo "Checking for LK magic number in the file:"
+        if hexdump -C $LK_IMAGE | grep -q "88 16 88 58"; then
+          echo "✅ LK magic number found!"
+        else
+          echo "⚠️ LK magic number not found!"
+        fi
+        
+        echo ""
+        echo "Last 64 bytes (DTB should end here):"
+        tail -c 64 $LK_IMAGE | hexdump -C
 
     - name: Upload LK artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: lk-with-dtb
+        name: lk-build-output
         path: |
           build-k65v1_64_bsp/lk-dtb.img
           build-k65v1_64_bsp/lk.img
           build-k65v1_64_bsp/lk-verified.img
-          build-k65v1_64_bsp/lk-dtb.img.backup
-          build-k65v1_64_bsp/lk.img.backup
+          build-k65v1_64_bsp/*.backup
+          dtb_with_header.bin
