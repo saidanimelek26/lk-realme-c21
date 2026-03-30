@@ -34,11 +34,6 @@ jobs:
         cd ~/gcc-toolchain
         git checkout e9b2ab0932573a0ca90cad11ab75d9619f19c458
 
-    - name: Create dtb.cfg config file
-      run: |
-        echo "NAME = lk_main_dtb" > dtb.cfg
-        cat dtb.cfg
-
     - name: Build LK
       run: |
         export python=python2
@@ -47,67 +42,60 @@ jobs:
     - name: Show build output
       run: ls -lh build-k65v1_64_bsp/
 
-    - name: Add DTB to LK using mkimage (from scripts folder)
+    - name: Create mkimage config file for full image
       run: |
-        # Check if DTB exists
-        if [ ! -f "dtb/realme_c21_lk.dtb" ]; then
-          echo "❌ DTB file not found at dtb/realme_c21_lk.dtb"
-          exit 1
-        fi
-        
-        # Check if mkimage exists
-        if [ ! -f "scripts/mkimage" ]; then
-          echo "❌ mkimage not found at scripts/mkimage"
-          exit 1
-        fi
-        
-        echo "=== Adding DTB to LK using mkimage ==="
-        
+        cat > full_image.cfg << 'EOF'
+# LK main image configuration
+IMAGE = lk
+NAME = lk
+
+# DTB partition configuration
+IMAGE = dtb/realme_c21_lk.dtb
+NAME = lk_main_dtb
+EOF
+        cat full_image.cfg
+
+    - name: Build full LK image with mkimage
+      run: |
         # Make mkimage executable
         chmod +x scripts/mkimage
         
-        # Use mkimage to create DTB with MediaTek header
-        ./scripts/mkimage dtb/realme_c21_lk.dtb dtb.cfg > dtb_with_header.bin
+        # Go to build directory
+        cd build-k65v1_64_bsp
         
-        echo "DTB with header created:"
-        ls -lh dtb_with_header.bin
+        # Create the full image with both partitions
+        ../scripts/mkimage lk.img ../full_image.cfg > lk_full.img
         
-        # Combine lk.img with DTB package
-        cat build-k65v1_64_bsp/lk.img dtb_with_header.bin > build-k65v1_64_bsp/lk_final.img
+        echo "Full image created:"
+        ls -lh lk_full.img
         
-        echo "Final LK image created:"
-        ls -lh build-k65v1_64_bsp/lk_final.img
-        
-        # Also update lk-dtb.img
-        cp build-k65v1_64_bsp/lk_final.img build-k65v1_64_bsp/lk-dtb.img
+        cd ..
 
-    - name: Verify the final image
+    - name: Verify the full image
       run: |
         echo "=== Verification ==="
         
-        echo "First 32 bytes (should start with 88 16 88 58):"
-        hexdump -C build-k65v1_64_bsp/lk_final.img | head -3
+        # Check file size
+        ls -lh build-k65v1_64_bsp/lk_full.img
         
+        # Check for LK magic number
+        echo "First 32 bytes:"
+        hexdump -C build-k65v1_64_bsp/lk_full.img | head -3
+        
+        # Check for dtb partition name
         echo ""
-        echo "Searching for 'lk_main_dtb' in the image:"
-        if strings build-k65v1_64_bsp/lk_final.img | grep -q "lk_main_dtb"; then
+        echo "Searching for 'lk_main_dtb':"
+        if strings build-k65v1_64_bsp/lk_full.img | grep -q "lk_main_dtb"; then
           echo "✅ 'lk_main_dtb' found!"
         else
-          echo "⚠️ 'lk_main_dtb' not found in strings"
+          echo "⚠️ 'lk_main_dtb' not found"
         fi
-        
-        echo ""
-        echo "File sizes:"
-        ls -lh build-k65v1_64_bsp/lk_final.img
-        ls -lh build-k65v1_64_bsp/lk-dtb.img
 
-    - name: Upload LK artifacts
+    - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: realme-c21-lk-final
+        name: realme-c21-lk-full
         path: |
-          build-k65v1_64_bsp/lk_final.img
-          build-k65v1_64_bsp/lk-dtb.img
+          build-k65v1_64_bsp/lk_full.img
           build-k65v1_64_bsp/lk.img
-          build-k65v1_64_bsp/lk-verified.img
-          dtb_with_header.bin
+          build-k65v1_64_bsp/lk-dtb.img
