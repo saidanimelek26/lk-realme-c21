@@ -44,8 +44,20 @@ jobs:
         echo "NAME = lk_main_dtb" > lk_main_dtb.cfg
         cat lk_main_dtb.cfg
 
+    - name: List build files
+      run: |
+        echo "=== Build directory contents ==="
+        ls -lh build-k65v1_64_bsp/
+        echo "================================"
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: realme-c21-lk-final
-        path: build-k65v1_64_bsp/lk.img
+        name: realme-c21-lk-complete
+        path: |
+          build-k65v1_64_bsp/lk.img
+          build-k65v1_64_bsp/lk-bin.img
+          build-k65v1_64_bsp/lk-no-mtk-header.bin
+          build-k65v1_64_bsp/lk-verified.img
+          build-k65v1_64_bsp/lk-sign.img
+          build-k65v1_64_bsp/lk-dtb.img
