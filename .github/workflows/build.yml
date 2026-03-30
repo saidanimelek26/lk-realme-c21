@@ -1,4 +1,4 @@
-name: Build LK Bootloader for Realme C21
+name: Build LK Bootloader for Realme C21 (with mkimage)
 
 on:
   push:
@@ -13,10 +13,10 @@ jobs:
     - name: Checkout sources
       uses: actions/checkout@v4
 
-    - name: Install Python 2
+    - name: Install Python 2 & U-Boot tools
       run: |
         sudo apt-get update
-        sudo apt-get install -y python2
+        sudo apt-get install -y python2 u-boot-tools
         sudo ln -s /usr/bin/python2 /usr/local/bin/python
         python --version
 
@@ -42,137 +42,68 @@ jobs:
     - name: Show build output
       run: ls -lh build-k65v1_64_bsp/
 
-    - name: Create final LK image with both partitions
+    - name: Create Image Tree Source (ITS) file
       run: |
-        python3 << 'EOF'
-        import os
-        
-        print("=" * 50)
-        print("Creating final LK image with LK + DTB partitions")
-        print("=" * 50)
-        
-        # Step 1: Read the LK image
-        lk_path = "build-k65v1_64_bsp/lk.img"
-        if not os.path.exists(lk_path):
-            print(f"ERROR: {lk_path} not found!")
-            exit(1)
-        
-        with open(lk_path, "rb") as f:
-            lk_data = f.read()
-        
-        print(f"1. LK image size: {len(lk_data)} bytes")
-        
-        # Step 2: Read the DTB file
-        dtb_path = "dtb/realme_c21_lk.dtb"
-        if not os.path.exists(dtb_path):
-            print(f"ERROR: {dtb_path} not found!")
-            exit(1)
-        
-        with open(dtb_path, "rb") as f:
-            dtb_data = f.read()
-        
-        print(f"2. DTB file size: {len(dtb_data)} bytes")
-        
-        # Step 3: Target DTB size from original working LK
-        TARGET_DTB_SIZE = 140563
-        
-        # Step 4: Pad or truncate DTB to target size
-        if len(dtb_data) < TARGET_DTB_SIZE:
-            padding = TARGET_DTB_SIZE - len(dtb_data)
-            dtb_data += b'\x00' * padding
-            print(f"3. Padded DTB by {padding} bytes to {TARGET_DTB_SIZE} bytes")
-        elif len(dtb_data) > TARGET_DTB_SIZE:
-            dtb_data = dtb_data[:TARGET_DTB_SIZE]
-            print(f"3. Truncated DTB to {TARGET_DTB_SIZE} bytes")
-        else:
-            print(f"3. DTB already at correct size: {TARGET_DTB_SIZE} bytes")
-        
-        # Step 5: Create 32-byte MediaTek header for DTB
-        # Format: "lk_main_dtb" + null bytes to fill 32 bytes
-        header_name = "lk_main_dtb"
-        header = bytearray(32)
-        header[:len(header_name)] = header_name.encode('ascii')
-        
-        print(f"4. DTB header created: {len(header)} bytes")
-        print(f"   Header content: {header[:16]}...")
-        
-        # Step 6: Combine everything
-        # Final structure: [LK CODE] + [32-byte HEADER] + [DTB DATA]
-        final_image = lk_data + bytes(header) + dtb_data
-        
-        print(f"\n5. Final image created:")
-        print(f"   - LK code: {len(lk_data)} bytes")
-        print(f"   - DTB header: 32 bytes")
-        print(f"   - DTB data: {len(dtb_data)} bytes")
-        print(f"   - TOTAL: {len(final_image)} bytes")
-        
-        # Step 7: Save the final image
-        output_path = "build-k65v1_64_bsp/lk_final.img"
-        with open(output_path, "wb") as f:
-            f.write(final_image)
-        
-        print(f"\n✅ Saved to: {output_path}")
-        
-        # Step 8: Verification
-        print("\n" + "=" * 50)
-        print("Verification")
-        print("=" * 50)
-        
-        # Check LK magic number at start
-        lk_magic = final_image[:4]
-        if lk_magic.hex() == "88168858":
-            print("✅ LK magic number (0x58881688) found at offset 0")
-        else:
-            print(f"❌ LK magic number mismatch: {lk_magic.hex()}")
-        
-        # Check for DTB header in the file
-        if b'lk_main_dtb' in final_image:
-            offset = final_image.find(b'lk_main_dtb')
-            print(f"✅ 'lk_main_dtb' found at offset {offset} (0x{offset:x})")
-        else:
-            print("❌ 'lk_main_dtb' not found in final image")
-        
-        # Verify total size
-        expected_size = len(lk_data) + 32 + TARGET_DTB_SIZE
-        if len(final_image) == expected_size:
-            print(f"✅ Size matches expected: {expected_size} bytes")
-        else:
-            print(f"⚠️ Size mismatch: got {len(final_image)}, expected {expected_size}")
-        
-        # Create additional flashable copies
-        with open("build-k65v1_64_bsp/lk_flashable.img", "wb") as f:
-            f.write(final_image)
-        
-        with open("build-k65v1_64_bsp/lk-dtb.img", "wb") as f:
-            f.write(final_image)
-        
-        print("\n✅ Flashable images created:")
-        print("   - lk_final.img")
-        print("   - lk_flashable.img")
-        print("   - lk-dtb.img")
-        EOF
+        cat > lk.its << 'EOF'
+        /dts-v1/;
 
-    - name: Verify final images
+        / {
+            description = "LK Bootloader with DTB";
+            #address-cells = <1>;
+
+            images {
+                lk {
+                    description = "Little Kernel Bootloader";
+                    data = /incbin/("build-k65v1_64_bsp/lk.img");
+                    type = "firmware";
+                    arch = "arm";
+                    os = "u-boot";
+                    compression = "none";
+                    load = <0x48000000>;
+                    entry = <0x48000000>;
+                };
+                fdt {
+                    description = "Device Tree Blob";
+                    data = /incbin/("dtb/realme_c21_lk.dtb");
+                    type = "flat_dt";
+                    arch = "arm";
+                    compression = "none";
+                    load = <0xffffffff>;
+                };
+            };
+
+            configurations {
+                default = "config";
+                config {
+                    description = "LK with DTB";
+                    firmware = "lk";
+                    fdt = "fdt";
+                };
+            };
+        };
+        EOF
+        echo "✅ ITS file created:"
+        cat lk.its
+
+    - name: Build final LK image with mkimage
       run: |
-        echo "=== Final Images Information ==="
-        echo ""
-        echo "File sizes:"
+        # Use mkimage to create the final FIT image
+        mkimage -f lk.its -A arm -O linux -T firmware build-k65v1_64_bsp/lk_final.img
+        
+        echo "✅ Final image created successfully!"
         ls -lh build-k65v1_64_bsp/lk_final.img
-        ls -lh build-k65v1_64_bsp/lk_flashable.img
-        ls -lh build-k65v1_64_bsp/lk-dtb.img
-        ls -lh build-k65v1_64_bsp/lk.img
-        echo ""
+
+    - name: Verify the final image
+      run: |
+        echo "=== Verification of Final Image ==="
+        mkimage -l build-k65v1_64_bsp/lk_final.img
         
-        echo "First 32 bytes of lk_final.img (should start with 88 16 88 58):"
-        hexdump -C build-k65v1_64_bsp/lk_final.img | head -3
         echo ""
-        
         echo "Searching for 'lk_main_dtb' in the image:"
         if strings build-k65v1_64_bsp/lk_final.img | grep -q "lk_main_dtb"; then
           echo "✅ 'lk_main_dtb' found!"
-          strings build-k65v1_64_bsp/lk_final.img | grep "lk_main_dtb"
         else
-          echo "❌ 'lk_main_dtb' not found!"
+          echo "⚠️ 'lk_main_dtb' not found in strings"
         fi
 
     - name: Upload LK artifacts
@@ -181,7 +112,6 @@ jobs:
         name: realme-c21-lk-final
         path: |
           build-k65v1_64_bsp/lk_final.img
-          build-k65v1_64_bsp/lk_flashable.img
-          build-k65v1_64_bsp/lk-dtb.img
           build-k65v1_64_bsp/lk.img
-          build-k65v1_64_bsp/lk-verified.img
+          build-k65v1_64_bsp/lk-dtb.img
+          lk.its
