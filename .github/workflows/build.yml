@@ -31,10 +31,10 @@ jobs:
       run: |
         # Explicitly use python2 for the build
         export PYTHON=python2
-        make X5
+        make k65v1_64_bsp
         
     - name: Upload bootloader
       uses: actions/upload-artifact@v4
       with:
-        name: X5_lk-signed.img
-        path: build-X5/lk-sign.img
+        name: k65v1_64_bsp_lk-signed.img
+        path: build-k65v1_64_bsp/lk-sign.img
