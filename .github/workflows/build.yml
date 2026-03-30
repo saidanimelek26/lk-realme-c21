@@ -2,7 +2,6 @@ name: Build LK Bootloader for Realme C21
 
 on:
   push:
-    branches: [ main ]
   pull_request:
   workflow_dispatch:
 
@@ -38,11 +37,6 @@ jobs:
       run: |
         export python=python2
         TOOLCHAIN_PREFIX=~/gcc-toolchain/bin/arm-linux-androideabi- make k65v1_64_bsp
-
-    - name: Create dtb.cfg
-      run: |
-        echo "NAME = lk_main_dtb" > lk_main_dtb.cfg
-        cat lk_main_dtb.cfg
 
     - name: Append DTB to LK image
       run: |
