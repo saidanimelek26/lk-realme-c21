@@ -12,14 +12,20 @@ jobs:
     steps:
     - name: Checkout sources
       uses: actions/checkout@v2
-    - name: Install pyhton2
-      run: sudo apt-get install python2
+      
+    - name: Install python2
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python2
+        # Create symlink if needed
+        sudo ln -s /usr/bin/python2 /usr/bin/python || true
+        
     - name: Build the bootloader
       run: |
-        export python=python2
         make X5
-    - name : Upload bootloader
+        
+    - name: Upload bootloader
       uses: actions/upload-artifact@v2
       with:
         name: X5_lk-signed.img
-        path: /home/runner/work/lk/lk/build-X5/lk-sign.img
+        path: build-X5/lk-sign.img
