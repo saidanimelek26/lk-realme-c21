@@ -18,8 +18,8 @@ $(OUTBIN): $(OUTELF)
 	$(NOECHO)mv $(BUILDDIR)/lk_header.bin $@
 
 $(OUTELF)-dtb.img: $(OUTBIN)
-	@echo adding phone dtb with mtk header to output image: $@
-	$(NOECHO)$(LK_TOP_DIR)/scripts/mkimage $(LK_TOP_DIR)/dtb/$(PHONE_DTB)  $(LK_TOP_DIR)/lk_main_dtb.cfg >> $@
+		@echo adding dtb: $@
+		$(NOECHO)cat $< $(LK_TOP_DIR)/dtb/$(PHONE_DTB) > $@
 
 $(OUTELF)-sign.img: $(OUTELF)-dtb.img
 	@mv $(OUTBIN) $(OUTELF)-bin.img
