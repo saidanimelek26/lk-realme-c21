@@ -1,5 +1,4 @@
-
-name: Build LK Bootloader
+name: Build LK Bootloader with Franek's fix
 
 on:
   push:
@@ -11,15 +10,16 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-    - name: Checkout sources
+    - name: Checkout sources with Franek's fix
       uses: actions/checkout@v4
+      with:
+        ref: pull/2/head
 
     - name: Install Python 2
       run: |
         sudo apt-get update
         sudo apt-get install -y python2
         sudo ln -s /usr/bin/python2 /usr/local/bin/python
-        python --version
 
     - name: Cache GCC toolchain
       id: cache-gcc
@@ -35,22 +35,15 @@ jobs:
         cd ~/gcc-toolchain
         git checkout e9b2ab0932573a0ca90cad11ab75d9619f19c458
 
-    - name: Build LK
+    - name: Build LK with Franek's fixed mkimage
       run: |
         export python=python2
-        TOOLCHAIN_PREFIX=~/gcc-toolchain/bin/arm-linux-androideabi- make -j2 k65v1_64_bsp
+        TOOLCHAIN_PREFIX=~/gcc-toolchain/bin/arm-linux-androideabi- make k65v1_64_bsp
 
-    - name: Show build output (debug)
-      run: ls -lh build-k65v1_64_bsp/
-
-    - name: Upload LK artifacts
+    - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: lk-build-output
+        name: lk-with-franek-fix
         path: |
           build-k65v1_64_bsp/lk-dtb.img
           build-k65v1_64_bsp/lk.img
-          build-k65v1_64_bsp/lk-verified.img
-          build-k65v1_64_bsp/lk.sym
-          build-k65v1_64_bsp/lk.lst
-          build-k65v1_64_bsp/lk.debug.lst
