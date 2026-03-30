@@ -37,20 +37,66 @@ jobs:
     - name: Build LK
       run: |
         export python=python2
-        touch ./realme_c21_lk.dtb
         TOOLCHAIN_PREFIX=~/gcc-toolchain/bin/arm-linux-androideabi- make k65v1_64_bsp
 
-    - name: Show build output (debug)
+    - name: Show build output
       run: ls -lh build-k65v1_64_bsp/
+
+    - name: Check if lk-dtb.img exists
+      run: |
+        if [ -f build-k65v1_64_bsp/lk-dtb.img ]; then
+          echo "✅ lk-dtb.img found - this is the best file to use!"
+          ls -lh build-k65v1_64_bsp/lk-dtb.img
+        else
+          echo "⚠️ lk-dtb.img not found"
+          exit 1
+        fi
+
+    - name: Check DTB file exists
+      run: |
+        if [ -f dtb/realme_c21_lk.dtb ]; then
+          echo "✅ DTB file found"
+          ls -lh dtb/realme_c21_lk.dtb
+        else
+          echo "❌ DTB file not found at dtb/realme_c21_lk.dtb"
+          exit 1
+        fi
+
+    - name: Append DTB to lk-dtb.img
+      run: |
+        # Use lk-dtb.img (has reserved space for DTB)
+        LK_IMAGE="build-k65v1_64_bsp/lk-dtb.img"
+        
+        echo "=== Appending DTB to lk-dtb.img ==="
+        echo "Before:"
+        ls -lh $LK_IMAGE
+        ls -lh dtb/realme_c21_lk.dtb
+        
+        # Create MediaTek header (32 bytes)
+        printf "lk_main_dtb" > header.bin
+        dd if=/dev/zero bs=1 count=32 2>/dev/null >> header.bin
+        dd if=header.bin of=mtk_header.bin bs=1 count=32 2>/dev/null
+        
+        # Combine header + DTB
+        cat mtk_header.bin dtb/realme_c21_lk.dtb > dtb_with_header.bin
+        
+        # Append to lk-dtb.img
+        cat dtb_with_header.bin >> $LK_IMAGE
+        
+        echo "After:"
+        ls -lh $LK_IMAGE
+        
+        echo "✅ DTB appended to lk-dtb.img successfully!"
+        
+        # Verify first bytes (should have magic number 0x58881688)
+        echo "=== Verifying magic number ==="
+        hexdump -C $LK_IMAGE | head -3
 
     - name: Upload LK artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: lk-build-output
+        name: lk-with-dtb
         path: |
           build-k65v1_64_bsp/lk-dtb.img
           build-k65v1_64_bsp/lk.img
           build-k65v1_64_bsp/lk-verified.img
-          build-k65v1_64_bsp/lk.sym
-          build-k65v1_64_bsp/lk.lst
-          build-k65v1_64_bsp/lk.debug.lst
