@@ -3,7 +3,6 @@ name: Build LK Bootloader for Realme C21
 on:
   push:
   pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -43,61 +42,48 @@ jobs:
     - name: Show build output
       run: ls -lh build-k65v1_64_bsp/
 
-    - name: Create dtb.cfg file
+    - name: Create dtb.cfg
       run: |
         echo "NAME = lk_main_dtb" > dtb.cfg
         cat dtb.cfg
 
-    - name: Create DTB with MediaTek header using scripts/mkimage
+    - name: Create DTB partition with mkimage
       run: |
         chmod +x scripts/mkimage
-        ./scripts/mkimage dtb/realme_c21_lk.dtb dtb.cfg > dtb_with_header.bin
-        echo "DTB with header created:"
-        ls -lh dtb_with_header.bin
+        ./scripts/mkimage dtb/realme_c21_lk.dtb dtb.cfg > dtb_partition.bin
+        ls -lh dtb_partition.bin
 
-    - name: Combine LK and DTB (CORRECT MEDIATEK FORMAT)
+    - name: Create LK partition with mkimage
       run: |
-        # The correct MediaTek format is simple concatenation:
-        # [lk.img] + [dtb_with_header.bin]
+        # Create config for LK partition
+        echo "NAME = lk" > lk.cfg
         
-        cat build-k65v1_64_bsp/lk.img dtb_with_header.bin > build-k65v1_64_bsp/lk_final.img
+        # Create LK partition
+        ./scripts/mkimage build-k65v1_64_bsp/lk.img lk.cfg > lk_partition.bin
+        ls -lh lk_partition.bin
+
+    - name: Combine both partitions (MediaTek format)
+      run: |
+        # MediaTek format: [Partition1] + [Partition2]
+        cat lk_partition.bin dtb_partition.bin > build-k65v1_64_bsp/lk_final.img
         
         echo "Final image created:"
         ls -lh build-k65v1_64_bsp/lk_final.img
 
-    - name: Verify the final image
+    - name: Verify
       run: |
         echo "=== Verification ==="
-        
-        # Check LK magic number at start
-        echo "First 32 bytes (should be 88 16 88 58):"
+        echo "First 32 bytes:"
         hexdump -C build-k65v1_64_bsp/lk_final.img | head -3
-        
-        # Check for lk_main_dtb header in the file
         echo ""
-        echo "Searching for 'lk_main_dtb' header:"
-        if strings build-k65v1_64_bsp/lk_final.img | grep -q "lk_main_dtb"; then
-          echo "✅ 'lk_main_dtb' found in image"
-        else
-          echo "❌ 'lk_main_dtb' NOT found"
-        fi
-        
-        # Show file size breakdown
-        echo ""
-        echo "File size breakdown:"
-        LK_SIZE=$(stat -c%s build-k65v1_64_bsp/lk.img)
-        DTB_SIZE=$(stat -c%s dtb_with_header.bin)
-        FINAL_SIZE=$(stat -c%s build-k65v1_64_bsp/lk_final.img)
-        echo "  lk.img: $LK_SIZE bytes"
-        echo "  dtb_with_header.bin: $DTB_SIZE bytes"
-        echo "  lk_final.img: $FINAL_SIZE bytes"
+        echo "Searching for 'lk_main_dtb':"
+        strings build-k65v1_64_bsp/lk_final.img | grep "lk" | head -10
 
-    - name: Upload LK artifacts
+    - name: Upload
       uses: actions/upload-artifact@v4
       with:
         name: realme-c21-lk-final
         path: |
           build-k65v1_64_bsp/lk_final.img
-          build-k65v1_64_bsp/lk.img
-          build-k65v1_64_bsp/lk-dtb.img
-          dtb_with_header.bin
+          lk_partition.bin
+          dtb_partition.bin
