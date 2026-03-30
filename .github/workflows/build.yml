@@ -1,4 +1,4 @@
-name: Build LK Bootloader with Franek's fix
+name: Build LK Bootloader for Realme C21
 
 on:
   push:
@@ -10,16 +10,15 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-    - name: Checkout sources with Franek's fix
+    - name: Checkout sources
       uses: actions/checkout@v4
-      with:
-        ref: pull/2/head
 
     - name: Install Python 2
       run: |
         sudo apt-get update
         sudo apt-get install -y python2
         sudo ln -s /usr/bin/python2 /usr/local/bin/python
+        python --version
 
     - name: Cache GCC toolchain
       id: cache-gcc
@@ -35,15 +34,39 @@ jobs:
         cd ~/gcc-toolchain
         git checkout e9b2ab0932573a0ca90cad11ab75d9619f19c458
 
-    - name: Build LK with Franek's fixed mkimage
+    - name: Build LK
       run: |
         export python=python2
         TOOLCHAIN_PREFIX=~/gcc-toolchain/bin/arm-linux-androideabi- make k65v1_64_bsp
 
+    - name: Show build output
+      run: ls -lh build-k65v1_64_bsp/
+
+    - name: Create dtb.cfg
+      run: |
+        echo "NAME = lk_main_dtb" > dtb.cfg
+        cat dtb.cfg
+
+    - name: Create DTB with header using mkimage
+      run: |
+        chmod +x scripts/mkimage
+        ./scripts/mkimage dtb/realme_c21_lk.dtb dtb.cfg > dtb_with_header.bin
+        ls -lh dtb_with_header.bin
+
+    - name: Create final LK image with both partitions
+      run: |
+        # Combine LK and DTB partitions
+        cat build-k65v1_64_bsp/lk.img dtb_with_header.bin > build-k65v1_64_bsp/lk_final.img
+        
+        echo "Final image created:"
+        ls -lh build-k65v1_64_bsp/lk_final.img
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: lk-with-franek-fix
+        name: realme-c21-lk-final
         path: |
-          build-k65v1_64_bsp/lk-dtb.img
+          build-k65v1_64_bsp/lk_final.img
           build-k65v1_64_bsp/lk.img
+          build-k65v1_64_bsp/lk-dtb.img
+          dtb_with_header.bin
