@@ -47,13 +47,6 @@ jobs:
         echo "NAME = lk_main_dtb" > dtb.cfg
         cat dtb.cfg
 
-    - name: Create DTB with header using mkimage
-      run: |
-        chmod +x scripts/mkimage
-        ./scripts/mkimage dtb/realme_c21_lk.dtb dtb.cfg > dtb_with_header.bin
-        echo "DTB with header created:"
-        ls -lh dtb_with_header.bin
-
     - name: Create final image (MTK format)
       run: |
         # Simple concatenation - the correct MTK format
