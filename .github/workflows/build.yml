@@ -41,20 +41,7 @@ jobs:
 
     - name: Show build output
       run: ls -lh build-k65v1_64_bsp/
-
-    - name: Create dtb.cfg
-      run: |
-        echo "NAME = lk_main_dtb" > dtb.cfg
-        cat dtb.cfg
-
-    - name: Create final image (MTK format)
-      run: |
-        # Simple concatenation - the correct MTK format
-        cat build-k65v1_64_bsp/lk.img dtb_with_header.bin > build-k65v1_64_bsp/lk_final.img
-        
-        echo "Final image created:"
-        ls -lh build-k65v1_64_bsp/lk_final.img
-
+      
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
