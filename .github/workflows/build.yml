@@ -2,6 +2,7 @@ name: Build LK Bootloader for Realme C21
 
 on:
   push:
+    branches: [ main ]
   pull_request:
   workflow_dispatch:
 
@@ -43,20 +44,12 @@ jobs:
         echo "NAME = lk_main_dtb" > lk_main_dtb.cfg
         cat lk_main_dtb.cfg
 
-    - name: Append DTB to LK image (CRITICAL: use >> not >)
+    - name: Append DTB to LK image
       run: |
-        # Make mkimage executable
         chmod +x scripts/mkimage
-        
-        # Create output directory
         mkdir -p output
-        
-        # Copy LK image to output
         cp build-k65v1_64_bsp/lk.img output/lk.img
-        
-        # IMPORTANT: Use >> to APPEND, not > to overwrite
-        ./scripts/mkimage dtb/realme_c21_lk.dtb lk_main_dtb.cfg >> build-k65v1_64_bsp/lk.img
-        
+        ./scripts/mkimage dtb/realme_c21_lk.dtb lk_main_dtb.cfg >> output/lk.img
         echo "Final image created:"
         ls -lh output/lk.img
 
@@ -66,3 +59,4 @@ jobs:
         name: realme-c21-lk-final
         path: |
           output/lk.img
+          build-k65v1_64_bsp/lk.img
