@@ -1,4 +1,4 @@
-name: Build LK Bootloader
+name: Build LK Bootloader for Realme C21
 
 on:
   push:
@@ -20,10 +20,6 @@ jobs:
         sudo ln -s /usr/bin/python2 /usr/local/bin/python
         python --version
 
-    - name: Install dependencies
-      run: |
-        sudo apt-get install -y device-tree-compiler
-
     - name: Cache GCC toolchain
       id: cache-gcc
       uses: actions/cache@v4
@@ -38,7 +34,7 @@ jobs:
         cd ~/gcc-toolchain
         git checkout e9b2ab0932573a0ca90cad11ab75d9619f19c458
 
-    - name: Build LK
+    - name: Build LK for Realme C21
       run: |
         export python=python2
         TOOLCHAIN_PREFIX=~/gcc-toolchain/bin/arm-linux-androideabi- make k65v1_64_bsp
@@ -46,64 +42,46 @@ jobs:
     - name: Show build output
       run: ls -lh build-k65v1_64_bsp/
 
-    - name: Create dtb.cfg file
+    - name: Prepare Realme C21 DTB with correct size
       run: |
-        echo "NAME = lk_main_dtb" > dtb.cfg
-        cat dtb.cfg
-
-    - name: Check DTB file
-      run: |
-        if [ -f dtb/realme_c21_lk.dtb ]; then
-          echo "✅ DTB file found"
-          ls -lh dtb/realme_c21_lk.dtb
+        DTB_FILE="dtb/realme_c21_lk.dtb"
+        
+        # Correct DTB size from original working LK (140563 bytes)
+        CORRECT_DTB_SIZE=140563
+        
+        # Check current DTB size
+        if [ -f "$DTB_FILE" ]; then
+          CURRENT_SIZE=$(stat -c%s "$DTB_FILE")
+          echo "Current DTB size: $CURRENT_SIZE bytes"
+          echo "Target DTB size: $CORRECT_DTB_SIZE bytes"
+          
+          # Pad or truncate to correct size
+          if [ $CURRENT_SIZE -lt $CORRECT_DTB_SIZE ]; then
+            echo "Padding DTB to correct size..."
+            dd if=/dev/zero bs=1 count=$((CORRECT_DTB_SIZE - CURRENT_SIZE)) 2>/dev/null >> "$DTB_FILE"
+          elif [ $CURRENT_SIZE -gt $CORRECT_DTB_SIZE ]; then
+            echo "Truncating DTB to correct size..."
+            dd if="$DTB_FILE" of="$DTB_FILE.tmp" bs=1 count=$CORRECT_DTB_SIZE 2>/dev/null
+            mv "$DTB_FILE.tmp" "$DTB_FILE"
+          fi
+          
+          NEW_SIZE=$(stat -c%s "$DTB_FILE")
+          echo "Final DTB size: $NEW_SIZE bytes"
         else
-          echo "❌ DTB file not found"
+          echo "ERROR: DTB file not found at $DTB_FILE"
           exit 1
         fi
-
-    - name: Create MediaTek DTB header using Python
-      run: |
-        python3 << 'EOF'
-        import struct
-        import os
         
-        # Read the DTB file
-        with open("dtb/realme_c21_lk.dtb", "rb") as f:
-            dtb_data = f.read()
-        
-        print(f"DTB size: {len(dtb_data)} bytes")
-        
-        # MediaTek header structure (32 bytes):
-        # - 16 bytes: name (null-padded)
-        # - 4 bytes: version? (optional)
-        # - 12 bytes: reserved/zeros
-        
-        # Create the header with the correct name
-        name = "lk_main_dtb"
-        header = bytearray(32)
-        
-        # Write the name (max 16 bytes)
-        name_bytes = name.encode('ascii')
-        header[0:len(name_bytes)] = name_bytes
-        
-        # The rest of the header remains zeros
+        # Create MediaTek header (32 bytes)
+        printf "lk_main_dtb" > header.bin
+        dd if=/dev/zero bs=1 count=32 2>/dev/null >> header.bin
+        dd if=header.bin of=mtk_header.bin bs=1 count=32 2>/dev/null
         
         # Combine header + DTB
-        dtb_with_header = bytes(header) + dtb_data
+        cat mtk_header.bin "$DTB_FILE" > dtb_with_header.bin
         
-        print(f"Header size: 32 bytes")
-        print(f"Total package size: {len(dtb_with_header)} bytes")
-        
-        # Show header preview
-        print("Header (first 16 bytes):")
-        print(" ".join(f"{b:02x}" for b in header[:16]))
-        
-        # Save the combined file
-        with open("dtb_with_header.bin", "wb") as f:
-            f.write(dtb_with_header)
-        
-        print("✅ dtb_with_header.bin created")
-        EOF
+        echo "DTB with header size:"
+        ls -lh dtb_with_header.bin
 
     - name: Append DTB to LK image
       run: |
@@ -113,7 +91,7 @@ jobs:
         elif [ -f "build-k65v1_64_bsp/lk.img" ]; then
           LK_IMAGE="build-k65v1_64_bsp/lk.img"
         else
-          echo "❌ No LK image found!"
+          echo "ERROR: No LK image found!"
           exit 1
         fi
         
@@ -130,9 +108,17 @@ jobs:
         echo "After append:"
         ls -lh $LK_IMAGE
         
-        echo "✅ DTB appended successfully!"
+        # Verify header at end of file
+        echo "Verifying last 64 bytes:"
+        tail -c 64 $LK_IMAGE | hexdump -C
+        
+        if tail -c 64 $LK_IMAGE | grep -q "lk_main_dtb"; then
+          echo "✅ SUCCESS: MediaTek header found at end of file!"
+        else
+          echo "⚠️ WARNING: Header not found at end of file"
+        fi
 
-    - name: Verify LK image
+    - name: Verify final LK image
       run: |
         if [ -f "build-k65v1_64_bsp/lk-dtb.img" ]; then
           LK_IMAGE="build-k65v1_64_bsp/lk-dtb.img"
@@ -140,30 +126,20 @@ jobs:
           LK_IMAGE="build-k65v1_64_bsp/lk.img"
         fi
         
-        echo "=== Verification ==="
-        echo "File size:"
-        ls -lh $LK_IMAGE
-        
+        echo "=== Final LK Image Information ==="
+        echo "File: $LK_IMAGE"
+        echo "Size: $(stat -c%s $LK_IMAGE) bytes"
         echo ""
-        echo "First 32 bytes (should start with 88 16 88 58):"
-        hexdump -C $LK_IMAGE | head -3
-        
+        echo "First 32 bytes (LK header - should start with 88 16 88 58):"
+        hexdump -C $LK_IMAGE | head -2
         echo ""
-        echo "Checking for LK magic number in the file:"
-        if hexdump -C $LK_IMAGE | grep -q "88 16 88 58"; then
-          echo "✅ LK magic number found!"
-        else
-          echo "⚠️ LK magic number not found!"
-        fi
-        
-        echo ""
-        echo "Last 64 bytes (DTB should end here):"
+        echo "Last 64 bytes (DTB trailer - should contain 'lk_main_dtb'):"
         tail -c 64 $LK_IMAGE | hexdump -C
 
     - name: Upload LK artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: lk-build-output
+        name: realme-c21-lk-with-dtb
         path: |
           build-k65v1_64_bsp/lk-dtb.img
           build-k65v1_64_bsp/lk.img
