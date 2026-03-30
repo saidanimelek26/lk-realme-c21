@@ -13,16 +13,26 @@ jobs:
     - name: Checkout sources
       uses: actions/checkout@v4
       
-    - name: Install python2
+    - name: Install and configure python2 as default
       run: |
         sudo apt-get update
         sudo apt-get install -y python2
-        sudo ln -s /usr/bin/python2 /usr/bin/python || true
+        # Make python2 the default python command
+        sudo update-alternatives --install /usr/bin/python python /usr/bin/python2 1
+        sudo update-alternatives --install /usr/bin/python python /usr/bin/python3 2
+        # Set python2 as the default (priority 1 is higher than 2? Actually lower number = higher priority? Let's force it)
+        echo "2" | sudo update-alternatives --config python || true
+        # Alternative: directly symlink
+        sudo ln -sf /usr/bin/python2 /usr/bin/python
+        python --version
         python2 --version
         
     - name: Build the bootloader
-      run: make X5
-      
+      run: |
+        # Explicitly use python2 for the build
+        export PYTHON=python2
+        make X5
+        
     - name: Upload bootloader
       uses: actions/upload-artifact@v4
       with:
