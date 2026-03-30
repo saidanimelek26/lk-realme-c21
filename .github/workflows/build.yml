@@ -44,15 +44,15 @@ jobs:
 
     - name: Create mkimage config file for full image
       run: |
-        cat > full_image.cfg << 'EOF'
-# LK main image configuration
-IMAGE = lk
-NAME = lk
-
-# DTB partition configuration
-IMAGE = dtb/realme_c21_lk.dtb
-NAME = lk_main_dtb
-EOF
+        echo "# LK main image configuration" > full_image.cfg
+        echo "IMAGE = lk" >> full_image.cfg
+        echo "NAME = lk" >> full_image.cfg
+        echo "" >> full_image.cfg
+        echo "# DTB partition configuration" >> full_image.cfg
+        echo "IMAGE = dtb/realme_c21_lk.dtb" >> full_image.cfg
+        echo "NAME = lk_main_dtb" >> full_image.cfg
+        
+        echo "Config file created:"
         cat full_image.cfg
 
     - name: Build full LK image with mkimage
@@ -64,9 +64,10 @@ EOF
         cd build-k65v1_64_bsp
         
         # Create the full image with both partitions
+        echo "Creating full LK image with mkimage..."
         ../scripts/mkimage lk.img ../full_image.cfg > lk_full.img
         
-        echo "Full image created:"
+        echo "Full image created successfully!"
         ls -lh lk_full.img
         
         cd ..
@@ -76,26 +77,42 @@ EOF
         echo "=== Verification ==="
         
         # Check file size
+        echo "File size:"
         ls -lh build-k65v1_64_bsp/lk_full.img
         
-        # Check for LK magic number
-        echo "First 32 bytes:"
+        # Check for LK magic number at start
+        echo ""
+        echo "First 32 bytes (should start with 88 16 88 58):"
         hexdump -C build-k65v1_64_bsp/lk_full.img | head -3
         
-        # Check for dtb partition name
+        # Check for dtb partition name in the file
         echo ""
-        echo "Searching for 'lk_main_dtb':"
+        echo "Searching for 'lk_main_dtb' in the image:"
         if strings build-k65v1_64_bsp/lk_full.img | grep -q "lk_main_dtb"; then
-          echo "✅ 'lk_main_dtb' found!"
+          echo "✅ 'lk_main_dtb' found successfully!"
+          strings build-k65v1_64_bsp/lk_full.img | grep "lk_main_dtb"
         else
-          echo "⚠️ 'lk_main_dtb' not found"
+          echo "❌ 'lk_main_dtb' not found in image"
         fi
 
-    - name: Upload artifacts
+    - name: Create flashable copies
+      run: |
+        # Create copies with standard names
+        cp build-k65v1_64_bsp/lk_full.img build-k65v1_64_bsp/lk_final.img
+        cp build-k65v1_64_bsp/lk_full.img build-k65v1_64_bsp/lk-dtb.img
+        
+        echo "Flashable images created:"
+        ls -lh build-k65v1_64_bsp/lk_final.img
+        ls -lh build-k65v1_64_bsp/lk-dtb.img
+
+    - name: Upload LK artifacts
       uses: actions/upload-artifact@v4
       with:
         name: realme-c21-lk-full
         path: |
           build-k65v1_64_bsp/lk_full.img
-          build-k65v1_64_bsp/lk.img
+          build-k65v1_64_bsp/lk_final.img
           build-k65v1_64_bsp/lk-dtb.img
+          build-k65v1_64_bsp/lk.img
+          build-k65v1_64_bsp/lk-verified.img
+          full_image.cfg
