@@ -4,7 +4,7 @@ TARGET := k65v1_64_bsp
 MODULES += app/mt_boot \
            dev/lcm
 
-PHONE_DTB := realme_c21_lk.dtb
+PHONE_DTB := main_dtb_header.bin
 MTK_EMMC_SUPPORT = yes
 MTK_MMC_COMBO_DRV = yes
 MTK_EMMC_SUPPORT_OTP = yes
