@@ -42,77 +42,146 @@ jobs:
     - name: Show build output
       run: ls -lh build-k65v1_64_bsp/
 
-    - name: Create mkimage config file for full image
+    - name: Create final LK image with both partitions
       run: |
-        echo "# LK main image configuration" > full_image.cfg
-        echo "IMAGE = lk" >> full_image.cfg
-        echo "NAME = lk" >> full_image.cfg
-        echo "" >> full_image.cfg
-        echo "# DTB partition configuration" >> full_image.cfg
-        echo "IMAGE = dtb/realme_c21_lk.dtb" >> full_image.cfg
-        echo "NAME = lk_main_dtb" >> full_image.cfg
+        python3 << 'EOF'
+        import os
         
-        echo "Config file created:"
-        cat full_image.cfg
+        print("=" * 50)
+        print("Creating final LK image with LK + DTB partitions")
+        print("=" * 50)
+        
+        # Step 1: Read the LK image
+        lk_path = "build-k65v1_64_bsp/lk.img"
+        if not os.path.exists(lk_path):
+            print(f"ERROR: {lk_path} not found!")
+            exit(1)
+        
+        with open(lk_path, "rb") as f:
+            lk_data = f.read()
+        
+        print(f"1. LK image size: {len(lk_data)} bytes")
+        
+        # Step 2: Read the DTB file
+        dtb_path = "dtb/realme_c21_lk.dtb"
+        if not os.path.exists(dtb_path):
+            print(f"ERROR: {dtb_path} not found!")
+            exit(1)
+        
+        with open(dtb_path, "rb") as f:
+            dtb_data = f.read()
+        
+        print(f"2. DTB file size: {len(dtb_data)} bytes")
+        
+        # Step 3: Target DTB size from original working LK
+        TARGET_DTB_SIZE = 140563
+        
+        # Step 4: Pad or truncate DTB to target size
+        if len(dtb_data) < TARGET_DTB_SIZE:
+            padding = TARGET_DTB_SIZE - len(dtb_data)
+            dtb_data += b'\x00' * padding
+            print(f"3. Padded DTB by {padding} bytes to {TARGET_DTB_SIZE} bytes")
+        elif len(dtb_data) > TARGET_DTB_SIZE:
+            dtb_data = dtb_data[:TARGET_DTB_SIZE]
+            print(f"3. Truncated DTB to {TARGET_DTB_SIZE} bytes")
+        else:
+            print(f"3. DTB already at correct size: {TARGET_DTB_SIZE} bytes")
+        
+        # Step 5: Create 32-byte MediaTek header for DTB
+        # Format: "lk_main_dtb" + null bytes to fill 32 bytes
+        header_name = "lk_main_dtb"
+        header = bytearray(32)
+        header[:len(header_name)] = header_name.encode('ascii')
+        
+        print(f"4. DTB header created: {len(header)} bytes")
+        print(f"   Header content: {header[:16]}...")
+        
+        # Step 6: Combine everything
+        # Final structure: [LK CODE] + [32-byte HEADER] + [DTB DATA]
+        final_image = lk_data + bytes(header) + dtb_data
+        
+        print(f"\n5. Final image created:")
+        print(f"   - LK code: {len(lk_data)} bytes")
+        print(f"   - DTB header: 32 bytes")
+        print(f"   - DTB data: {len(dtb_data)} bytes")
+        print(f"   - TOTAL: {len(final_image)} bytes")
+        
+        # Step 7: Save the final image
+        output_path = "build-k65v1_64_bsp/lk_final.img"
+        with open(output_path, "wb") as f:
+            f.write(final_image)
+        
+        print(f"\n✅ Saved to: {output_path}")
+        
+        # Step 8: Verification
+        print("\n" + "=" * 50)
+        print("Verification")
+        print("=" * 50)
+        
+        # Check LK magic number at start
+        lk_magic = final_image[:4]
+        if lk_magic.hex() == "88168858":
+            print("✅ LK magic number (0x58881688) found at offset 0")
+        else:
+            print(f"❌ LK magic number mismatch: {lk_magic.hex()}")
+        
+        # Check for DTB header in the file
+        if b'lk_main_dtb' in final_image:
+            offset = final_image.find(b'lk_main_dtb')
+            print(f"✅ 'lk_main_dtb' found at offset {offset} (0x{offset:x})")
+        else:
+            print("❌ 'lk_main_dtb' not found in final image")
+        
+        # Verify total size
+        expected_size = len(lk_data) + 32 + TARGET_DTB_SIZE
+        if len(final_image) == expected_size:
+            print(f"✅ Size matches expected: {expected_size} bytes")
+        else:
+            print(f"⚠️ Size mismatch: got {len(final_image)}, expected {expected_size}")
+        
+        # Create additional flashable copies
+        with open("build-k65v1_64_bsp/lk_flashable.img", "wb") as f:
+            f.write(final_image)
+        
+        with open("build-k65v1_64_bsp/lk-dtb.img", "wb") as f:
+            f.write(final_image)
+        
+        print("\n✅ Flashable images created:")
+        print("   - lk_final.img")
+        print("   - lk_flashable.img")
+        print("   - lk-dtb.img")
+        EOF
 
-    - name: Build full LK image with mkimage
+    - name: Verify final images
       run: |
-        # Make mkimage executable
-        chmod +x scripts/mkimage
-        
-        # Go to build directory
-        cd build-k65v1_64_bsp
-        
-        # Create the full image with both partitions
-        echo "Creating full LK image with mkimage..."
-        ../scripts/mkimage lk.img ../full_image.cfg > lk_full.img
-        
-        echo "Full image created successfully!"
-        ls -lh lk_full.img
-        
-        cd ..
-
-    - name: Verify the full image
-      run: |
-        echo "=== Verification ==="
-        
-        # Check file size
-        echo "File size:"
-        ls -lh build-k65v1_64_bsp/lk_full.img
-        
-        # Check for LK magic number at start
+        echo "=== Final Images Information ==="
         echo ""
-        echo "First 32 bytes (should start with 88 16 88 58):"
-        hexdump -C build-k65v1_64_bsp/lk_full.img | head -3
-        
-        # Check for dtb partition name in the file
-        echo ""
-        echo "Searching for 'lk_main_dtb' in the image:"
-        if strings build-k65v1_64_bsp/lk_full.img | grep -q "lk_main_dtb"; then
-          echo "✅ 'lk_main_dtb' found successfully!"
-          strings build-k65v1_64_bsp/lk_full.img | grep "lk_main_dtb"
-        else
-          echo "❌ 'lk_main_dtb' not found in image"
-        fi
-
-    - name: Create flashable copies
-      run: |
-        # Create copies with standard names
-        cp build-k65v1_64_bsp/lk_full.img build-k65v1_64_bsp/lk_final.img
-        cp build-k65v1_64_bsp/lk_full.img build-k65v1_64_bsp/lk-dtb.img
-        
-        echo "Flashable images created:"
+        echo "File sizes:"
         ls -lh build-k65v1_64_bsp/lk_final.img
+        ls -lh build-k65v1_64_bsp/lk_flashable.img
         ls -lh build-k65v1_64_bsp/lk-dtb.img
+        ls -lh build-k65v1_64_bsp/lk.img
+        echo ""
+        
+        echo "First 32 bytes of lk_final.img (should start with 88 16 88 58):"
+        hexdump -C build-k65v1_64_bsp/lk_final.img | head -3
+        echo ""
+        
+        echo "Searching for 'lk_main_dtb' in the image:"
+        if strings build-k65v1_64_bsp/lk_final.img | grep -q "lk_main_dtb"; then
+          echo "✅ 'lk_main_dtb' found!"
+          strings build-k65v1_64_bsp/lk_final.img | grep "lk_main_dtb"
+        else
+          echo "❌ 'lk_main_dtb' not found!"
+        fi
 
     - name: Upload LK artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: realme-c21-lk-full
+        name: realme-c21-lk-final
         path: |
-          build-k65v1_64_bsp/lk_full.img
           build-k65v1_64_bsp/lk_final.img
+          build-k65v1_64_bsp/lk_flashable.img
           build-k65v1_64_bsp/lk-dtb.img
           build-k65v1_64_bsp/lk.img
           build-k65v1_64_bsp/lk-verified.img
-          full_image.cfg
