@@ -11,19 +11,24 @@ jobs:
 
     steps:
     - name: Checkout sources
-      uses: actions/checkout@v4   # Updated from v2 to v4
+      uses: actions/checkout@v4
       
-    - name: Install python2
+    - name: Install python2 from deadsnakes
       run: |
         sudo apt-get update
-        sudo apt-get install -y python2
-        sudo ln -s /usr/bin/python2 /usr/bin/python || true
+        sudo apt-get install -y software-properties-common
+        sudo add-apt-repository -y ppa:deadsnakes/ppa
+        sudo apt-get update
+        sudo apt-get install -y python2.7
+        sudo ln -s /usr/bin/python2.7 /usr/bin/python2
+        sudo ln -s /usr/bin/python2.7 /usr/bin/python || true
+        python2 --version
         
     - name: Build the bootloader
-      run: make X5   # Removed export; use symlink or modify Makefile
+      run: make X5
       
     - name: Upload bootloader
-      uses: actions/upload-artifact@v4   # Updated from v2 to v4
+      uses: actions/upload-artifact@v4
       with:
         name: X5_lk-signed.img
-        path: build-X5/lk-sign.img   # Relative path is safer
+        path: build-X5/lk-sign.img
