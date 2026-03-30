@@ -18,6 +18,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y python2
         sudo ln -s /usr/bin/python2 /usr/local/bin/python
+        python --version
 
     - name: Cache GCC toolchain
       id: cache-gcc
@@ -38,19 +39,34 @@ jobs:
         export python=python2
         TOOLCHAIN_PREFIX=~/gcc-toolchain/bin/arm-linux-androideabi- make k65v1_64_bsp
 
-    - name: Append DTB to LK image
+    - name: Show build output
+      run: ls -lh build-k65v1_64_bsp/
+
+    - name: Create dtb.cfg
+      run: |
+        echo "NAME = lk_main_dtb" > dtb.cfg
+        cat dtb.cfg
+
+    - name: Create DTB with header using mkimage
       run: |
         chmod +x scripts/mkimage
-        mkdir -p output
-        cp build-k65v1_64_bsp/lk.img output/lk.img
-        ./scripts/mkimage dtb/realme_c21_lk.dtb lk_main_dtb.cfg >> output/lk.img
+        ./scripts/mkimage dtb/realme_c21_lk.dtb dtb.cfg > dtb_with_header.bin
+        echo "DTB with header created:"
+        ls -lh dtb_with_header.bin
+
+    - name: Create final image (MTK format)
+      run: |
+        # Simple concatenation - the correct MTK format
+        cat build-k65v1_64_bsp/lk.img dtb_with_header.bin > build-k65v1_64_bsp/lk_final.img
+        
         echo "Final image created:"
-        ls -lh output/lk.img
+        ls -lh build-k65v1_64_bsp/lk_final.img
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: realme-c21-lk-final
         path: |
-          output/lk.img
+          build-k65v1_64_bsp/lk_final.img
           build-k65v1_64_bsp/lk.img
+          dtb_with_header.bin
