@@ -1,4 +1,5 @@
-name: Build LK Bootloader for Realme C21
+
+name: Build LK Bootloader
 
 on:
   push:
@@ -37,53 +38,19 @@ jobs:
     - name: Build LK
       run: |
         export python=python2
-        TOOLCHAIN_PREFIX=~/gcc-toolchain/bin/arm-linux-androideabi- make k65v1_64_bsp
+        TOOLCHAIN_PREFIX=~/gcc-toolchain/bin/arm-linux-androideabi- make -j2 k65v1_64_bsp
 
-    - name: Show build output
+    - name: Show build output (debug)
       run: ls -lh build-k65v1_64_bsp/
 
-    - name: Create dtb.cfg
-      run: |
-        echo "NAME = lk_main_dtb" > dtb.cfg
-        cat dtb.cfg
-
-    - name: Create DTB partition with mkimage
-      run: |
-        chmod +x scripts/mkimage
-        ./scripts/mkimage dtb/realme_c21_lk.dtb dtb.cfg > dtb_partition.bin
-        ls -lh dtb_partition.bin
-
-    - name: Create LK partition with mkimage
-      run: |
-        # Create config for LK partition
-        echo "NAME = lk" > lk.cfg
-        
-        # Create LK partition
-        ./scripts/mkimage build-k65v1_64_bsp/lk.img lk.cfg > lk_partition.bin
-        ls -lh lk_partition.bin
-
-    - name: Combine both partitions (MediaTek format)
-      run: |
-        # MediaTek format: [Partition1] + [Partition2]
-        cat lk_partition.bin dtb_partition.bin > build-k65v1_64_bsp/lk_final.img
-        
-        echo "Final image created:"
-        ls -lh build-k65v1_64_bsp/lk_final.img
-
-    - name: Verify
-      run: |
-        echo "=== Verification ==="
-        echo "First 32 bytes:"
-        hexdump -C build-k65v1_64_bsp/lk_final.img | head -3
-        echo ""
-        echo "Searching for 'lk_main_dtb':"
-        strings build-k65v1_64_bsp/lk_final.img | grep "lk" | head -10
-
-    - name: Upload
+    - name: Upload LK artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: realme-c21-lk-final
+        name: lk-build-output
         path: |
-          build-k65v1_64_bsp/lk_final.img
-          lk_partition.bin
-          dtb_partition.bin
+          build-k65v1_64_bsp/lk-dtb.img
+          build-k65v1_64_bsp/lk.img
+          build-k65v1_64_bsp/lk-verified.img
+          build-k65v1_64_bsp/lk.sym
+          build-k65v1_64_bsp/lk.lst
+          build-k65v1_64_bsp/lk.debug.lst
