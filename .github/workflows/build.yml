@@ -1,8 +1,9 @@
-name: Build LK Bootloader for Realme C21 (with mkimage)
+name: Build LK Bootloader for Realme C21
 
 on:
   push:
   pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -13,10 +14,10 @@ jobs:
     - name: Checkout sources
       uses: actions/checkout@v4
 
-    - name: Install Python 2 & U-Boot tools
+    - name: Install Python 2
       run: |
         sudo apt-get update
-        sudo apt-get install -y python2 u-boot-tools
+        sudo apt-get install -y python2
         sudo ln -s /usr/bin/python2 /usr/local/bin/python
         python --version
 
@@ -42,69 +43,54 @@ jobs:
     - name: Show build output
       run: ls -lh build-k65v1_64_bsp/
 
-    - name: Create Image Tree Source (ITS) file
+    - name: Create dtb.cfg file
       run: |
-        cat > lk.its << 'EOF'
-        /dts-v1/;
+        echo "NAME = lk_main_dtb" > dtb.cfg
+        cat dtb.cfg
 
-        / {
-            description = "LK Bootloader with DTB";
-            #address-cells = <1>;
-
-            images {
-                lk {
-                    description = "Little Kernel Bootloader";
-                    data = /incbin/("build-k65v1_64_bsp/lk.img");
-                    type = "firmware";
-                    arch = "arm";
-                    os = "u-boot";
-                    compression = "none";
-                    load = <0x48000000>;
-                    entry = <0x48000000>;
-                };
-                fdt {
-                    description = "Device Tree Blob";
-                    data = /incbin/("dtb/realme_c21_lk.dtb");
-                    type = "flat_dt";
-                    arch = "arm";
-                    compression = "none";
-                    load = <0xffffffff>;
-                };
-            };
-
-            configurations {
-                default = "config";
-                config {
-                    description = "LK with DTB";
-                    firmware = "lk";
-                    fdt = "fdt";
-                };
-            };
-        };
-        EOF
-        echo "✅ ITS file created:"
-        cat lk.its
-
-    - name: Build final LK image with mkimage
+    - name: Create DTB with MediaTek header using scripts/mkimage
       run: |
-        # Use mkimage to create the final FIT image
-        mkimage -f lk.its -A arm -O linux -T firmware build-k65v1_64_bsp/lk_final.img
+        chmod +x scripts/mkimage
+        ./scripts/mkimage dtb/realme_c21_lk.dtb dtb.cfg > dtb_with_header.bin
+        echo "DTB with header created:"
+        ls -lh dtb_with_header.bin
+
+    - name: Combine LK and DTB (CORRECT MEDIATEK FORMAT)
+      run: |
+        # The correct MediaTek format is simple concatenation:
+        # [lk.img] + [dtb_with_header.bin]
         
-        echo "✅ Final image created successfully!"
+        cat build-k65v1_64_bsp/lk.img dtb_with_header.bin > build-k65v1_64_bsp/lk_final.img
+        
+        echo "Final image created:"
         ls -lh build-k65v1_64_bsp/lk_final.img
 
     - name: Verify the final image
       run: |
-        echo "=== Verification of Final Image ==="
-        mkimage -l build-k65v1_64_bsp/lk_final.img
+        echo "=== Verification ==="
         
+        # Check LK magic number at start
+        echo "First 32 bytes (should be 88 16 88 58):"
+        hexdump -C build-k65v1_64_bsp/lk_final.img | head -3
+        
+        # Check for lk_main_dtb header in the file
         echo ""
-        echo "Searching for 'lk_main_dtb' in the image:"
+        echo "Searching for 'lk_main_dtb' header:"
         if strings build-k65v1_64_bsp/lk_final.img | grep -q "lk_main_dtb"; then
-          echo "✅ 'lk_main_dtb' found!"
+          echo "✅ 'lk_main_dtb' found in image"
         else
-          echo "⚠️ 'lk_main_dtb' not found in strings"
+          echo "❌ 'lk_main_dtb' NOT found"
         fi
+        
+        # Show file size breakdown
+        echo ""
+        echo "File size breakdown:"
+        LK_SIZE=$(stat -c%s build-k65v1_64_bsp/lk.img)
+        DTB_SIZE=$(stat -c%s dtb_with_header.bin)
+        FINAL_SIZE=$(stat -c%s build-k65v1_64_bsp/lk_final.img)
+        echo "  lk.img: $LK_SIZE bytes"
+        echo "  dtb_with_header.bin: $DTB_SIZE bytes"
+        echo "  lk_final.img: $FINAL_SIZE bytes"
 
     - name: Upload LK artifacts
       uses: actions/upload-artifact@v4
@@ -114,4 +100,4 @@ jobs:
           build-k65v1_64_bsp/lk_final.img
           build-k65v1_64_bsp/lk.img
           build-k65v1_64_bsp/lk-dtb.img
-          lk.its
+          dtb_with_header.bin
