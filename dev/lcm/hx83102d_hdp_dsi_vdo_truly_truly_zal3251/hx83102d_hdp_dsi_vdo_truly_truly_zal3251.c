@@ -10,7 +10,7 @@
  ** ---------------- Revision History: --------------------------
  ** <version>    <date>          < author >              <desc>
  **  1.0           2020/08/31   wangcheng@ODM_HQ   Source file for LCD driver
- **  1.1           2026/03/29   Full LK compatibility with GPIO control
+ **  1.1           2026/03/29   Fixed LK compatibility (removed unsupported struct members)
  ********************************************/
 
 #define LOG_TAG "LCM_HX83102D_TRULY_TRULY"
@@ -489,8 +489,8 @@ static void lcm_get_params(LCM_PARAMS *params)
     params->dsi.horizontal_active_pixel = FRAME_WIDTH;
     params->dsi.ssc_disable = 1;
     params->dsi.PLL_CLOCK = 276;
-	params->dsi.horizontal_backporch_dyn = 0x86;
-	params->dsi.data_rate_dyn = 564;
+    /* Removed: params->dsi.horizontal_backporch_dyn = 0x86; */
+    /* Removed: params->dsi.data_rate_dyn = 564; */
     params->dsi.cont_clock = 0;
     params->dsi.clk_lp_per_line_enable = 0;
 
