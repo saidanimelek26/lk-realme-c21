@@ -2,6 +2,7 @@ name: Build LK Bootloader for Realme C21
 
 on:
   push:
+    branches: [ main ]
   pull_request:
   workflow_dispatch:
 
@@ -18,7 +19,6 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y python2
         sudo ln -s /usr/bin/python2 /usr/local/bin/python
-        python --version
 
     - name: Cache GCC toolchain
       id: cache-gcc
@@ -39,14 +39,13 @@ jobs:
         export python=python2
         TOOLCHAIN_PREFIX=~/gcc-toolchain/bin/arm-linux-androideabi- make k65v1_64_bsp
 
-    - name: Show build output
-      run: ls -lh build-k65v1_64_bsp/
-      
+    - name: Create dtb.cfg
+      run: |
+        echo "NAME = lk_main_dtb" > lk_main_dtb.cfg
+        cat lk_main_dtb.cfg
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: realme-c21-lk-final
-        path: |
-          build-k65v1_64_bsp/lk_final.img
-          build-k65v1_64_bsp/lk.img
-          dtb_with_header.bin
+        path: build-k65v1_64_bsp/lk.img
