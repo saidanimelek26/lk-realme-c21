@@ -1,7 +1,7 @@
 #
 LOCAL_DIR := $(GET_LOCAL_DIR)
 TARGET := k65v1_64_bsp
-MODULES += app/mt_boot \
+MODULES += app/mt_boot \   
            dev/lcm
 MTK_EMMC_SUPPORT = yes
 MTK_MMC_COMBO_DRV = yes
