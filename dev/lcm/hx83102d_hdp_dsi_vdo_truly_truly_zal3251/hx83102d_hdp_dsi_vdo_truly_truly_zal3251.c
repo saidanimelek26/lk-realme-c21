@@ -330,6 +330,7 @@ static struct LCM_setting_table bl_level_dimming_exit[] = {
     {REGFLAG_END_OF_TABLE, 0x00, {} }
 };
 
+#ifndef BUILD_LK
 static struct LCM_setting_table lcm_cabc_enter_setting_ui[] = {
     {0x55, 1, {0x01}},
     {REGFLAG_DELAY, 10, {}},
@@ -353,6 +354,7 @@ static struct LCM_setting_table lcm_cabc_exit_setting[] = {
     {REGFLAG_DELAY, 10, {}},
     {REGFLAG_END_OF_TABLE, 0x00, {} }
 };
+#endif
 
 static void push_table(void *cmdq, struct LCM_setting_table *table,
     unsigned int count, unsigned char force_update)
@@ -471,18 +473,12 @@ static void lcm_get_params(LCM_PARAMS *params)
         register_device_proc("lcd", "hx83102d", "TRULY_TRULY_SEVEN");
     }
 #else
-    /* LK: Enable ESD check with table */
+    /* LK: Enable ESD check with table only */
     params->dsi.esd_check_enable = 1;
     params->dsi.customization_esd_check_enable = 0;
     params->dsi.lcm_esd_check_table[0].cmd = 0x0A;
     params->dsi.lcm_esd_check_table[0].count = 1;
     params->dsi.lcm_esd_check_table[0].para_list[0] = 0x9D;
-    
-    /* OPLUS brightness mapping for LK */
-    params->blmap = NULL;
-    params->blmap_size = 0;
-    params->brightness_max = 4095;
-    params->brightness_min = 10;
 #endif
 }
 
@@ -671,6 +667,7 @@ static void lcm_resume(void)
     size = sizeof(init_setting_vdo) / sizeof(struct LCM_setting_table);
     push_table(NULL, init_setting_vdo, size, 1);
     
+#ifndef BUILD_LK
     switch (cabc_lastlevel) {
         case 1:
             push_table(NULL, lcm_cabc_enter_setting_ui, sizeof(lcm_cabc_enter_setting_ui) / sizeof(struct LCM_setting_table), 1);
@@ -682,6 +679,7 @@ static void lcm_resume(void)
             push_table(NULL, lcm_cabc_enter_setting_moving, sizeof(lcm_cabc_enter_setting_moving) / sizeof(struct LCM_setting_table), 1);
             break;
     }
+#endif
     LCM_LOGI("%s: exit\n", __func__);
 }
 
