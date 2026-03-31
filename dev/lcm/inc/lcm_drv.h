@@ -7,9 +7,10 @@
 #ifndef __LCM_DRV_H__
 #define __LCM_DRV_H__
 
-#include <linux/device.h>
-#include <linux/platform_device.h>
-#include <linux/regulator/consumer.h>
+#include <platform/mt_gpio.h>
+#include <platform/mt_i2c.h>
+#include <platform/mt_pmic.h>
+#include <string.h>
 
 #ifndef ARY_SIZE
 #define ARY_SIZE(x) (sizeof((x)) / sizeof((x[0])))
