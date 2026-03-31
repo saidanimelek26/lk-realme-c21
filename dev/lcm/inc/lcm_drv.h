@@ -30,6 +30,7 @@
 */
 #ifndef __LCM_DRV_H__
 #define __LCM_DRV_H__
+
 #include <platform/mt_gpio.h>
 #include <platform/mt_i2c.h>
 #include <platform/mt_pmic.h>
@@ -665,6 +666,12 @@ typedef struct {
 
 	unsigned int PLL_CLOCK_dyn;     /* PLL_CLOCK = (int) PLL_CLOCK */
 	unsigned int data_rate_dyn;     /* data_rate = PLL_CLOCK x 2 */
+	
+	/* OPLUS additions for Realme C21 */
+#ifdef OPLUS_BUG_STABILITY
+	unsigned int horizontal_sync_active_ext;
+	unsigned int horizontal_backporch_ext;
+#endif
 } LCM_DSI_PARAMS;
 
 /* --------------------------------------------------------------------------- */
@@ -706,6 +713,15 @@ typedef struct {
 	unsigned int physical_height;
 	unsigned int od_table_size;
 	void *od_table;
+	
+	/* OPLUS additions for Realme C21 */
+#ifdef OPLUS_BUG_STABILITY
+	int *blmap;
+	int blmap_size;
+	int brightness_max;
+	int brightness_min;
+#endif
+	
 #ifdef MTK_ROUND_CORNER_SUPPORT
 	LCM_ROUND_CORNER round_corner_params;
 #endif
@@ -872,6 +888,7 @@ typedef struct {
 	unsigned int (*mipi_dsi_cmds_rx)(char *out,
 		struct dsi_cmd_desc *cmds, unsigned int len);
 } LCM_UTIL_FUNCS;
+
 typedef enum {
 	LCM_DRV_IOCTL_ENABLE_CMD_MODE = 0x100,
 } LCM_DRV_IOCTL_CMD;
@@ -924,6 +941,29 @@ typedef struct {
 	                     unsigned int *lcm_value);
 	/* /////////////PWM///////////////////////////// */
 	void (*set_pwm_for_mix) (int enable);
+	
+	/* OPLUS additions for Realme C21 */
+#ifdef OPLUS_BUG_STABILITY
+	void (*shutdown_power)(void);
+	void (*set_cabc_mode_cmdq)(void *handle, unsigned int level);
+	void (*set_cabc_cmdq)(void *handle, unsigned int level);
+	void (*get_cabc_status)(int *status);
+	void (*set_hbm_mode_cmdq)(void *handle, unsigned int level);
+	bool (*set_hbm_wait_ramless)(bool wait, void *qhandle);
+	void (*set_safe_mode)(void *handle, unsigned int mode);
+#endif
+
+#ifdef OPLUS_FEATURE_AOD
+	void (*disp_lcm_aod_from_display_on)(void);
+	void (*set_aod_brightness)(void *handle, unsigned int mode);
+#endif
+
+#ifdef OPLUS_FEATURE_RAMLESS_AOD
+	void (*set_aod_area_cmdq)(void *handle, unsigned char *area);
+	void (*set_aod_cv_mode)(void *qhandle, unsigned int mode);
+	void (*doze_enable)(void *handle);
+	void (*doze_disable)(void *handle);
+#endif
 } LCM_DRIVER;
 
 
