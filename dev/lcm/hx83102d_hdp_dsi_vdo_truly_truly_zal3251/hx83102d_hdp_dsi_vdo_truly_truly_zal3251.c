@@ -11,6 +11,7 @@
  ** <version>    <date>          < author >              <desc>
  **  1.0           2020/08/31   wangcheng@ODM_HQ   Source file for LCD driver
  **  1.1           2026/03/29   Full LK compatibility with GPIO control
+ **  1.2           2026/03/31   Added esd_check and fixed compare_id function
  ********************************************/
 
 #define LOG_TAG "LCM_HX83102D_TRULY_TRULY"
@@ -768,6 +769,32 @@ static unsigned int lcm_compare_id(void)
     LCM_LOGI("%s: ID read failed, assuming LCM present\n", __func__);
     return 1;
 }
+
+/* ESD check function for LK */
+static int lcm_esd_check(void)
+{
+    unsigned char buffer[2] = {0};
+    unsigned int id = 0;
+    
+    LCM_LOGI("%s: Performing ESD check\n", __func__);
+    
+    /* Read register 0x0A as defined in get_params */
+    MDELAY(10);
+    read_reg_v2(0x0A, buffer, 1);
+    id = buffer[0];
+    
+    LCM_LOGI("%s: Read ID = 0x%02x, Expected = 0x9D\n", __func__, id);
+    
+    /* If ID matches expected, no ESD issue */
+    if (id == 0x9D) {
+        LCM_LOGI("%s: No ESD detected\n", __func__);
+        return 0;  /* No ESD detected */
+    }
+    
+    /* ESD detected, need recovery */
+    LCM_LOGI("%s: ESD detected! ID mismatch: 0x%02x != 0x9D\n", __func__, id);
+    return 1;  /* ESD detected */
+}
 #endif
 
 static void lcm_setbacklight_cmdq(void *handle, unsigned int level)
@@ -828,6 +855,7 @@ LCM_DRIVER hx83102d_hdp_dsi_vdo_truly_truly_zal3251_lcm_drv = {
     .resume = lcm_resume,
 #ifdef BUILD_LK
     .compare_id = lcm_compare_id,
+    .esd_check = lcm_esd_check,
 #endif
     .init_power = lcm_init_power,
     .suspend_power = lcm_suspend_power,
