@@ -63,8 +63,7 @@ endif
 # ============================================================
 # AVB and RoT - COMPLETELY DISABLED
 # ============================================================
-# Original code:
-# RoT for ARMv8
+# RoT for ARMv8 - DISABLED
 # ifneq ($(strip $(MTK_SECURITY_SW_SUPPORT)),no)
 # ifeq (,$(filter mt6570 mt6580,$(PLATFORM)))
 # ifeq ($(MTK_AVB20_SUPPORT),yes)
@@ -75,9 +74,8 @@ endif
 # endif
 # endif
 
-# AVB and RoT are disabled - no RoT modules
-# OBJS += $(LOCAL_DIR)/RoT/avb_RoT.o
-# OBJS += $(LOCAL_DIR)/RoT/RoT.o
+# AVB crypto hardware - DISABLED (requires avb_sha.h)
+# OBJS += $(LOCAL_DIR)/avb_crypto_hw.o
 
 ifeq ($(MTK_ATM_SUPPORT), yes)
 DEFINES += MTK_ATM_SUPPORT
@@ -144,13 +142,6 @@ endif
 # ============================================================
 # AVB Module - COMPLETELY DISABLED
 # ============================================================
-# Original code:
-# ifeq ($(MTK_AVB20_SUPPORT),yes)
-# MODULES += $(LOCAL_DIR)/avb
-# DEFINES += MTK_AVB20_SUPPORT
-# endif
-
-# AVB is disabled - do not add avb module
 # ifeq ($(MTK_AVB20_SUPPORT),yes)
 # MODULES += $(LOCAL_DIR)/avb
 # DEFINES += MTK_AVB20_SUPPORT
