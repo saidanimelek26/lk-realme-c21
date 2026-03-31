@@ -10,7 +10,7 @@
  ** ---------------- Revision History: --------------------------
  ** <version>    <date>          < author >              <desc>
  **  1.0           2020/08/31   wangcheng@ODM_HQ   Source file for LCD driver
- **  1.1           2026/03/31   Added lcm_compare_id and lcm_esd_check for LK
+ **  1.1           2026/03/31   Fixed for LK compatibility
  ********************************************/
 
 #define LOG_TAG "LCM_HX83102D_TRULY_TRULY"
@@ -256,6 +256,7 @@ struct LCM_setting_table {
     unsigned char para_list[64];
 };
 
+#ifndef BUILD_LK
 static int blmap_table[] = {
 	48,17, 29,23, 25,26, 30,23, 35,24, 34,28, 39,26, 40,25,
 	42,21, 41,23, 44,19, 44,19, 50,3, 51,7, 52,9, 58,34,
@@ -266,6 +267,7 @@ static int blmap_table[] = {
 	284,2645, 310,3045, 303,2936, 338,3510, 329,3357, 374,4123, 371,4074, 387,4357,
 	352,3720, 493,6294, 445,5407, 477,6015, 490,6255, 516,6760, 584,8110, 326,2906,
 };
+#endif
 
 static struct LCM_setting_table lcm_suspend_setting[] = {
     {0x28, 0, {} },
@@ -393,7 +395,6 @@ static void lcm_set_util_funcs(const LCM_UTIL_FUNCS *util)
 
 static void lcm_get_params(LCM_PARAMS *params)
 {
-    int boot_mode = 0;
     memset(params, 0, sizeof(LCM_PARAMS));
 
     params->type = LCM_TYPE_DSI;
@@ -437,35 +438,38 @@ static void lcm_get_params(LCM_PARAMS *params)
     params->dsi.clk_lp_per_line_enable = 0;
 
 #ifndef BUILD_LK
-    if (get_boot_mode() == META_BOOT) {
-        boot_mode++;
-        LCM_LOGI("META_BOOT\n");
+    {
+        int boot_mode = 0;
+        if (get_boot_mode() == META_BOOT) {
+            boot_mode++;
+            LCM_LOGI("META_BOOT\n");
+        }
+        if (get_boot_mode() == ADVMETA_BOOT) {
+            boot_mode++;
+            LCM_LOGI("ADVMETA_BOOT\n");
+        }
+        if (get_boot_mode() == ATE_FACTORY_BOOT) {
+            boot_mode++;
+            LCM_LOGI("ATE_FACTORY_BOOT\n");
+        }
+        if (get_boot_mode() == FACTORY_BOOT) {
+            boot_mode++;
+            LCM_LOGI("FACTORY_BOOT\n");
+        }
+        if (boot_mode == 0) {
+            LCM_LOGI("neither META_BOOT or FACTORY_BOOT\n");
+            params->dsi.esd_check_enable = 1;
+            params->dsi.customization_esd_check_enable = 0;
+            params->dsi.lcm_esd_check_table[0].cmd = 0x0A;
+            params->dsi.lcm_esd_check_table[0].count = 1;
+            params->dsi.lcm_esd_check_table[0].para_list[0] = 0x9D;
+        }
+        params->blmap = blmap_table;
+        params->blmap_size = sizeof(blmap_table)/sizeof(blmap_table[0]);
+        params->brightness_max = 4095;
+        params->brightness_min = 10;
+        register_device_proc("lcd", "hx83102d", "TRULY_TRULY_SEVEN");
     }
-    if (get_boot_mode() == ADVMETA_BOOT) {
-        boot_mode++;
-        LCM_LOGI("ADVMETA_BOOT\n");
-    }
-    if (get_boot_mode() == ATE_FACTORY_BOOT) {
-        boot_mode++;
-        LCM_LOGI("ATE_FACTORY_BOOT\n");
-    }
-    if (get_boot_mode() == FACTORY_BOOT) {
-        boot_mode++;
-        LCM_LOGI("FACTORY_BOOT\n");
-    }
-    if (boot_mode == 0) {
-        LCM_LOGI("neither META_BOOT or FACTORY_BOOT\n");
-        params->dsi.esd_check_enable = 1;
-        params->dsi.customization_esd_check_enable = 0;
-        params->dsi.lcm_esd_check_table[0].cmd = 0x0A;
-        params->dsi.lcm_esd_check_table[0].count = 1;
-        params->dsi.lcm_esd_check_table[0].para_list[0] = 0x9D;
-    }
-	params->blmap = blmap_table;
-	params->blmap_size = sizeof(blmap_table)/sizeof(blmap_table[0]);
-	params->brightness_max = 4095;
-	params->brightness_min = 10;
-	register_device_proc("lcd", "hx83102d", "TRULY_TRULY_SEVEN");
 #else
     /* LK: تفعيل ESD check فقط */
     params->dsi.esd_check_enable = 1;
@@ -746,6 +750,7 @@ static void lcm_setbacklight_cmdq(void *handle, unsigned int level)
     }
 }
 
+#ifndef BUILD_LK
 static void lcm_set_cabc_mode_cmdq(void *handle, unsigned int level)
 {
     printk("%s [lcd] cabc_mode is %d \n", __func__, level);
@@ -766,6 +771,7 @@ static void lcm_set_cabc_mode_cmdq(void *handle, unsigned int level)
         cabc_lastlevel = level;
     }
 }
+#endif
 
 LCM_DRIVER hx83102d_hdp_dsi_vdo_truly_truly_zal3251_lcm_drv = {
     .name = "hx83102d_truly_truly",
@@ -785,5 +791,7 @@ LCM_DRIVER hx83102d_hdp_dsi_vdo_truly_truly_zal3251_lcm_drv = {
 #endif
     .resume_power = lcm_resume_power,
     .set_backlight_cmdq = lcm_setbacklight_cmdq,
+#ifndef BUILD_LK
     .set_cabc_mode_cmdq = lcm_set_cabc_mode_cmdq,
+#endif
 };
