@@ -49,7 +49,6 @@
 
 
 #define HX83102D_TRULY_TRULY_LCM_ID (0x65)
-#include "disp_dts_gpio.h"
 static const unsigned int BL_MIN_LEVEL = 20;
 #ifndef BUILD_LK
 typedef struct LCM_UTIL_FUNCS LCM_UTIL_FUNCS;
