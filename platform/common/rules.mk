@@ -60,17 +60,24 @@ DEFINES += MBLOCK_HEAP_LIMIT=0
 DEFINES += HEAP_USE_MBLOCK=0
 endif
 
+# ============================================================
+# AVB and RoT - COMPLETELY DISABLED
+# ============================================================
+# Original code:
 # RoT for ARMv8
-ifneq ($(strip $(MTK_SECURITY_SW_SUPPORT)),no)
-ifeq (,$(filter mt6570 mt6580,$(PLATFORM)))
-ifeq ($(MTK_AVB20_SUPPORT),yes)
-OBJS += $(LOCAL_DIR)/RoT/avb_RoT.o
-else #MTK_AVB20_SUPPORT
-OBJS += $(LOCAL_DIR)/RoT/RoT.o
-endif #MTK_AVB20_SUPPORT
-endif
-endif
+# ifneq ($(strip $(MTK_SECURITY_SW_SUPPORT)),no)
+# ifeq (,$(filter mt6570 mt6580,$(PLATFORM)))
+# ifeq ($(MTK_AVB20_SUPPORT),yes)
+# OBJS += $(LOCAL_DIR)/RoT/avb_RoT.o
+# else #MTK_AVB20_SUPPORT
+# OBJS += $(LOCAL_DIR)/RoT/RoT.o
+# endif #MTK_AVB20_SUPPORT
+# endif
+# endif
 
+# AVB and RoT are disabled - no RoT modules
+# OBJS += $(LOCAL_DIR)/RoT/avb_RoT.o
+# OBJS += $(LOCAL_DIR)/RoT/RoT.o
 
 ifeq ($(MTK_ATM_SUPPORT), yes)
 DEFINES += MTK_ATM_SUPPORT
@@ -134,10 +141,20 @@ MODULES += $(LOCAL_DIR)/aee_platform_debug
 MODULES += $(LOCAL_DIR)/spm
 endif
 
-ifeq ($(MTK_AVB20_SUPPORT),yes)
-MODULES += $(LOCAL_DIR)/avb
-DEFINES += MTK_AVB20_SUPPORT
-endif
+# ============================================================
+# AVB Module - COMPLETELY DISABLED
+# ============================================================
+# Original code:
+# ifeq ($(MTK_AVB20_SUPPORT),yes)
+# MODULES += $(LOCAL_DIR)/avb
+# DEFINES += MTK_AVB20_SUPPORT
+# endif
+
+# AVB is disabled - do not add avb module
+# ifeq ($(MTK_AVB20_SUPPORT),yes)
+# MODULES += $(LOCAL_DIR)/avb
+# DEFINES += MTK_AVB20_SUPPORT
+# endif
 
 MODULES += $(LOCAL_DIR)/atf
 MODULES += $(LOCAL_DIR)/boot
