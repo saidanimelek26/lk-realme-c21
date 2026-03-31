@@ -1,115 +1,191 @@
-/* MediaTek Inc. (C) 2015. All rights reserved.
- *
- * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
- * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
- * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER ON
- * AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
- * NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
- * SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
- * SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES TO LOOK ONLY TO SUCH
- * THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. RECEIVER EXPRESSLY ACKNOWLEDGES
- * THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES
- * CONTAINED IN MEDIATEK SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK
- * SOFTWARE RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
- * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND
- * CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
- * AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
- * OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY RECEIVER TO
- * MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
- */
+LOCAL_DIR := $(GET_LOCAL_DIR)
 
-#include <stdint.h>
-#include <debug.h>
+INCLUDES += -I$(LOCAL_DIR)/include
+INCLUDES += -Iplatform/$(PLATFORM)/include/platform
 
-#include <load_vfy_boot.h>
-#include <verified_boot_common.h>
+##############################################################################
+# Check build type. (Begin)
+##############################################################################
+# For backward compatibility, USER_BUILD is also defined on userdebug build.
+##############################################################################
+ifneq ($(filter user, $(TARGET_BUILD_VARIANT)),)
+DEFINES += USER_BUILD USER_LOAD
+else ifneq ($(filter userdebug, $(TARGET_BUILD_VARIANT)),)
+DEFINES += USERDEBUG_BUILD USER_BUILD
+else ifneq ($(filter eng, $(TARGET_BUILD_VARIANT)),)
+DEFINES += ENG_BUILD
+else
+DEFINES += USER_BUILD   # If none of the keywords is found, define USER_BUILD.
+endif
+##############################################################################
+# Check build type. (End)
+##############################################################################
 
-#define SHA256_LENGTH 32
-#define MTK_SIP_LK_ROOT_OF_TRUST_AARCH32    0x82000120
+# for fastboot to update partition table (fastboot flash gpt PGPT)
+ifeq ($(MTK_GPT_UPDATE_SUPPORT), yes)
+DEFINES += MTK_GPT_UPDATE_SUPPORT
+endif
 
-/* query verified boot state - g_boot_state */
-extern unsigned int g_boot_state;
-int sha256(unsigned char *data, unsigned long data_len, unsigned char *output_hash);
-int sec_query_device_lock(int *lock_state);
+ifeq ($(PLATFORM_FASTBOOT_EMPTY_STORAGE), yes)
+DEFINES += PLATFORM_FASTBOOT_EMPTY_STORAGE
+endif
 
-static unsigned int smc_call(uint32_t function_id, uint32_t arg0, uint32_t arg1, uint32_t arg2, uint32_t arg3)
-{
-	unsigned int ret = 0;
-	register uint32_t reg0 __asm__("r0") = function_id;
-	register uint32_t reg1 __asm__("r1") = arg0;
-	register uint32_t reg2 __asm__("r2") = arg1;
-	register uint32_t reg3 __asm__("r3") = arg2;
-	register uint32_t reg4 __asm__("r4") = arg3;
+ifeq ($(MTK_RC_TO_VENDOR), yes)
+DEFINES += MTK_RC_TO_VENDOR
+endif
+ifeq ($(strip $(MICROTRUST_TEE_LITE_SUPPORT)),yes)
+  ifneq (,$(filter mt6570 mt6580,$(PLATFORM)))
+    DEFINES += CFG_MICROTRUST_TEE_LITE_SUPPORT
+    OBJS += $(LOCAL_DIR)/RoT/avb_RoT_teei.o
+  endif
+endif #MICROTRUST_TEE_LITE_SUPPORT
 
-	__asm__ volatile ("smc 0" : "+r"(reg0),
-		"+r"(reg1), "+r"(reg2), "+r"(reg3), "+r"(reg4));
+ifeq ($(strip $(TRUSTKERNEL_TEE_LITE_SUPPORT)),yes)
+  ifneq (,$(filter mt6570 mt6580,$(PLATFORM)))
+    DEFINES += CFG_TRUSTKERNEL_TEE_LITE_SUPPORT
+    OBJS += $(LOCAL_DIR)/RoT/avb_RoT_tkcore.o
+  endif
+endif #TRUSTKERNEL_TEE_LITE_SUPPORT
 
-	ret = reg0;
-	return ret;
-}
+HEAP_USE_MBLOCK ?= no
+ifeq (yes,$(strip $(HEAP_USE_MBLOCK)))
+DEFINES += HEAP_USE_MBLOCK=1
+MBLOCK_HEAP_SIZE ?= 100*1024*1024
+MBLOCK_HEAP_LIMIT ?= 0xc0000000
+DEFINES += MBLOCK_HEAP_SIZE=$(MBLOCK_HEAP_SIZE)
+DEFINES += MBLOCK_HEAP_LIMIT=$(MBLOCK_HEAP_LIMIT)
+else
+DEFINES += MBLOCK_HEAP_SIZE=0
+DEFINES += MBLOCK_HEAP_LIMIT=0
+DEFINES += HEAP_USE_MBLOCK=0
+endif
 
-void send_root_of_trust_info(void)
-{
-#ifdef AVB20_DISABLE
-	/* ============================================================
-	 * AVB COMPLETELY DISABLED - Skip root of trust
-	 * This function is bypassed to avoid any verification issues
-	 * ============================================================
-	 */
-	dprintf(INFO, "AVB disabled - skipping root of trust info\n");
-	return;
-#else
-	unsigned char public_key[PUBK_LEN] = {0};
-	unsigned char public_key_hash[SHA256_LENGTH] = {0};
-	int device_lock_state = 0;
-	unsigned int os_version = 0;
+# ============================================================
+# AVB and RoT - COMPLETELY DISABLED
+# ============================================================
+# RoT for ARMv8 - DISABLED
+# ifneq ($(strip $(MTK_SECURITY_SW_SUPPORT)),no)
+# ifeq (,$(filter mt6570 mt6580,$(PLATFORM)))
+# ifeq ($(MTK_AVB20_SUPPORT),yes)
+# OBJS += $(LOCAL_DIR)/RoT/avb_RoT.o
+# else #MTK_AVB20_SUPPORT
+# OBJS += $(LOCAL_DIR)/RoT/RoT.o
+# endif #MTK_AVB20_SUPPORT
+# endif
+# endif
 
-	dprintf(INFO,"sending root of trust info...\n");
+# AVB crypto hardware - DISABLED (requires avb_sha.h)
+# OBJS += $(LOCAL_DIR)/avb_crypto_hw.o
 
-	/* read public key and generate SHA256(pubk) */
-	if(sec_get_pubk(public_key, PUBK_LEN))
-		dprintf(CRITICAL,"fail to get public key info\n");
+ifeq ($(MTK_ATM_SUPPORT), yes)
+DEFINES += MTK_ATM_SUPPORT
+endif
+ifeq ($(UBSAN_SUPPORT), yes)
+OBJS += $(LOCAL_DIR)/sanitize_helper.o
+endif
+OBJS += $(LOCAL_DIR)/atm.o
 
-	if(sha256(public_key, PUBK_LEN, public_key_hash))
-		dprintf(CRITICAL,"fail to calculate public key hash\n");
+OBJS += $(LOCAL_DIR)/sec_wrapper.o
+OBJS += $(LOCAL_DIR)/profiling.o
+OBJS += $(LOCAL_DIR)/meta.o
+OBJS += $(LOCAL_DIR)/recovery.o
+OBJS += $(LOCAL_DIR)/fpga_boot_argument.o
+OBJS += $(LOCAL_DIR)/error.o
+OBJS += $(LOCAL_DIR)/chip_id.o
 
-	/* query device lock */
-	if(sec_query_device_lock(&device_lock_state))
-		dprintf(CRITICAL,"fail to get device lock state\n");
+ifeq ($(CFG_MTK_UART_COMMON),yes)
+MODULES += $(LOCAL_DIR)/uart
+endif
+MODULES += $(LOCAL_DIR)/loader
+MODULES += $(LOCAL_DIR)/storage
+MODULES += $(LOCAL_DIR)/timer
+ifeq ($(CFG_MTK_WDT_COMMON),yes)
+MODULES += $(LOCAL_DIR)/wdt
+endif
+MODULES += $(LOCAL_DIR)/partition
+MODULES += $(LOCAL_DIR)/plinfo
+MODULES += $(LOCAL_DIR)/pmic
 
-	/* query os version and patch level */
-	os_version = get_os_version();
-	if(os_version == 0)
-		dprintf(CRITICAL,"fail to get os version and patch level\n");
-#if 0
-	for(int i=0; i<PUBK_LEN; i+=8)
-		dprintf(CRITICAL,"public key [%d-%d] = 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x\n",
-			i, i+7, public_key[i], public_key[i+1], public_key[i+2], public_key[i+3],
-			public_key[i+4], public_key[i+5], public_key[i+6], public_key[i+7]);
-	for(int i=0; i<SHA256_LENGTH; i+=8)
-		dprintf(CRITICAL,"hash [%d-%d] = 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x\n",
-			i, i+7, public_key_hash[i], public_key_hash[i+1], public_key_hash[i+2], public_key_hash[i+3],
-			public_key_hash[i+4], public_key_hash[i+5], public_key_hash[i+6], public_key_hash[i+7]);
-	dprintf(CRITICAL,"device lock state : %d\n", device_lock_state);
-	dprintf(CRITICAL,"verified boot state : %d\n", g_boot_state);
-	dprintf(CRITICAL,"os version : 0x%x\n", os_version);
-#endif
-	/* send to ARM-TF via SMC call */
-	unsigned int *p_hash = (unsigned int *)public_key_hash;
-	unsigned int smc_ret = 0;
+ifeq ($(MTK_AB_OTA_UPDATER),yes)
+#RECOVERY_AS_BOOT is always enabled with MTK_AB_OTA_UPDATER (BOARD_USES_RECOVERY_AS_BOOT)
+DEFINES += MTK_AB_OTA_UPDATER
+DEFINES += RECOVERY_AS_BOOT
+endif
+MODULES += $(LOCAL_DIR)/bootctrl
 
-	/* send info. and the sequence : pubk(32B), device state(4B), boot state(4B), os version(4B) */
-	smc_ret |= smc_call(MTK_SIP_LK_ROOT_OF_TRUST_AARCH32, *(p_hash), *(p_hash+1), *(p_hash+2), *(p_hash+3));
-	smc_ret |= smc_call(MTK_SIP_LK_ROOT_OF_TRUST_AARCH32, *(p_hash+4), *(p_hash+5), *(p_hash+6), *(p_hash+7));
-	smc_ret |= smc_call(MTK_SIP_LK_ROOT_OF_TRUST_AARCH32, device_lock_state, g_boot_state, os_version, 0x0);
-	if(smc_ret)
-		dprintf(CRITICAL,"fail to send root of trust info. : 0x%x\n", smc_ret);
+ifeq ($(MTK_SSUSB), yes)
+MODULES += $(LOCAL_DIR)/mt_ssusb
+endif
 
-	/* to test if SMC call is locked after previous 3 calls */
-	smc_ret = smc_call(MTK_SIP_LK_ROOT_OF_TRUST_AARCH32, 0x0, 0x0, 0x0, 0x0);
-	if(!smc_ret)
-		dprintf(CRITICAL,"Warning! root of trust smc call is not locked : 0x%x\n", smc_ret);
-#endif
-}
+ifeq ($(MTK_MUSB), yes)
+MODULES += $(LOCAL_DIR)/mt_musb
+endif
+
+ifneq ($(SYSTEM_AS_ROOT),no)
+DEFINES += SYSTEM_AS_ROOT
+endif
+
+ifeq ($(LK_LD_MD_SUPPORT), yes)
+MODULES += $(LOCAL_DIR)/md
+endif
+
+ifeq ($(MTK_CHARGER_NEW_ARCH), yes)
+MODULES += $(LOCAL_DIR)/power
+endif
+
+# aee platform debug
+ifeq ($(MTK_AEE_PLATFORM_DEBUG_SUPPORT),yes)
+MODULES += $(LOCAL_DIR)/aee_platform_debug
+MODULES += $(LOCAL_DIR)/spm
+endif
+
+# ============================================================
+# AVB Module - COMPLETELY DISABLED
+# ============================================================
+# ifeq ($(MTK_AVB20_SUPPORT),yes)
+# MODULES += $(LOCAL_DIR)/avb
+# DEFINES += MTK_AVB20_SUPPORT
+# endif
+
+MODULES += $(LOCAL_DIR)/atf
+MODULES += $(LOCAL_DIR)/boot
+MODULES += $(LOCAL_DIR)/boot_menu
+ifeq ($(strip $(MICROTRUST_TEE_SUPPORT)),yes)
+MODULES += $(LOCAL_DIR)/teei
+endif
+
+ifeq ($(MTK_RECOVERY_RAMDISK_SPLIT),yes)
+DEFINES += MTK_RECOVERY_RAMDISK_SPLIT
+MODULES += lib/ramdisk_merge
+OBJS += $(LOCAL_DIR)/ramdisk/load_ramdisk.o
+OBJS += $(LOCAL_DIR)/ramdisk/load_vfy_ramdisk.o
+# Must bind with ram split to avoid misuse ramdisk in boot
+ifeq ($(RECOVERY_AS_BOOT),yes)
+DEFINES += RECOVERY_AS_BOOT
+endif
+endif
+
+ifeq (yes,$(strip $(MTK_BUILD_ENHANCE_MENU)))
+DEFINES += MTK_BUILD_ENHANCE_MENU
+endif
+
+# log_store platform debug
+ifeq ($(CFG_LOG_STORE_SUPPORT),yes)
+MODULES += $(LOCAL_DIR)/log_store
+DEFINES += LOG_STORE_SUPPORT
+ifneq ($(wildcard $(LOCAL_DIR)/../../../../../../internal/mtklog_enable),)
+DEFINES += UART_SWITCH_SUPPORT
+endif
+DEFINES += FASTBOOT_DUMP_LOG
+endif
+
+ifeq ($(DUMP_CODE_SECTION), yes)
+DEFINES += DUMP_CODE_SECTION
+endif
+
+ifeq ($(LK_MAIN_DTB_BUILT_IN),yes)
+MODULES += $(LOCAL_DIR)/lk_main_dtb_loader
+DEFINES += LK_MAIN_DTB_BUILT_IN
+endif
+
+MODULES += $(LOCAL_DIR)/emi
