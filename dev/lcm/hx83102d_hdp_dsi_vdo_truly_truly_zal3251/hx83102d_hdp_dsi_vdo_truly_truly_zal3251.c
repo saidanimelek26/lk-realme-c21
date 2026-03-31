@@ -10,7 +10,7 @@
  ** ---------------- Revision History: --------------------------
  ** <version>    <date>          < author >              <desc>
  **  1.0           2020/08/31   wangcheng@ODM_HQ   Source file for LCD driver
- **  1.1           2026/03/31   Fixed for LK compatibility
+ **  1.1           2026/03/31   Added complete LK support with esd_check
  ********************************************/
 
 #define LOG_TAG "LCM_HX83102D_TRULY_TRULY"
@@ -471,12 +471,18 @@ static void lcm_get_params(LCM_PARAMS *params)
         register_device_proc("lcd", "hx83102d", "TRULY_TRULY_SEVEN");
     }
 #else
-    /* LK: تفعيل ESD check فقط */
+    /* LK: Enable ESD check with table */
     params->dsi.esd_check_enable = 1;
     params->dsi.customization_esd_check_enable = 0;
     params->dsi.lcm_esd_check_table[0].cmd = 0x0A;
     params->dsi.lcm_esd_check_table[0].count = 1;
     params->dsi.lcm_esd_check_table[0].para_list[0] = 0x9D;
+    
+    /* OPLUS brightness mapping for LK */
+    params->blmap = NULL;
+    params->blmap_size = 0;
+    params->brightness_max = 4095;
+    params->brightness_min = 10;
 #endif
 }
 
@@ -501,7 +507,7 @@ static void lcm_init_power(void)
         MDELAY(1);
     }
 #else
-    /* LK: استخدام GPIO مباشر */
+    /* LK: Direct GPIO control for power sequence */
     mt_set_gpio_mode(GPIO_LCD_BIAS_ENP_PIN, GPIO_MODE_GPIO);
     mt_set_gpio_dir(GPIO_LCD_BIAS_ENP_PIN, GPIO_DIR_OUT);
     mt_set_gpio_out(GPIO_LCD_BIAS_ENP_PIN, GPIO_OUT_ONE);
@@ -614,7 +620,7 @@ static void lcm_init(void)
     MDELAY(50);
     lcd_queue_load_tp_fw();
 #else
-    /* LK: GPIO مباشر */
+    /* LK: Direct GPIO reset */
     mt_set_gpio_mode(LCM_RESET_PIN, GPIO_MODE_GPIO);
     mt_set_gpio_dir(LCM_RESET_PIN, GPIO_DIR_OUT);
     mt_set_gpio_out(LCM_RESET_PIN, GPIO_OUT_ONE);
@@ -680,26 +686,33 @@ static void lcm_resume(void)
 }
 
 #ifdef BUILD_LK
+/* Compare LCM ID function - returns unsigned int */
 static unsigned int lcm_compare_id(void)
 {
     unsigned char buffer[2] = {0};
     unsigned int id = 0;
+    int retry = 0;
     
     LCM_LOGI("%s: Reading LCM ID\n", __func__);
     MDELAY(50);
-    read_reg_v2(0x0A, buffer, 1);
-    id = buffer[0];
-    LCM_LOGI("%s: ID = 0x%02x\n", __func__, id);
     
-    if (id == 0x9D) {
-        LCM_LOGI("%s: LCM ID matched (0x9D)\n", __func__);
-        return 1;
+    for (retry = 0; retry < 3; retry++) {
+        MDELAY(10);
+        read_reg_v2(0x0A, buffer, 1);
+        id = buffer[0];
+        LCM_LOGI("%s: Attempt %d - ID = 0x%02x\n", __func__, retry + 1, id);
+        
+        if (id == 0x9D) {
+            LCM_LOGI("%s: LCM ID matched (0x9D)\n", __func__);
+            return 1;
+        }
     }
+    
     LCM_LOGI("%s: ID read failed, assuming LCM present\n", __func__);
     return 1;
 }
 
-/* ESD check function - required by LK */
+/* ESD check function - REQUIRED by LK */
 static unsigned int lcm_esd_check(void)
 {
     unsigned char buffer[2] = {0};
@@ -708,11 +721,13 @@ static unsigned int lcm_esd_check(void)
     LCM_LOGI("%s: Performing ESD check\n", __func__);
     MDELAY(10);
     
+    /* Read register 0x0A as defined in lcm_esd_check_table */
     read_reg_v2(0x0A, buffer, 1);
     id = buffer[0];
     
     LCM_LOGI("%s: Read ID = 0x%02x, Expected = 0x9D\n", __func__, id);
     
+    /* Return 0 if value matches expected (0x9D), 1 if mismatch */
     if (id == 0x9D) {
         LCM_LOGI("%s: ESD check passed\n", __func__);
         return 0;  /* No ESD detected */
@@ -773,6 +788,7 @@ static void lcm_set_cabc_mode_cmdq(void *handle, unsigned int level)
 }
 #endif
 
+/* LCM Driver Structure */
 LCM_DRIVER hx83102d_hdp_dsi_vdo_truly_truly_zal3251_lcm_drv = {
     .name = "hx83102d_truly_truly",
     .set_util_funcs = lcm_set_util_funcs,
