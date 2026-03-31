@@ -792,6 +792,13 @@ static AvbSlotVerifyResult load_and_verify_vbmeta(
 
   uint32_t rollback_index_location_to_use = rollback_index_location;
 
+  /* ============================================================
+   * MODIFICATION: Disable public key verification
+   * This forces key_is_trusted = true for all vbmeta images
+   * This allows the device to boot even with unsigned images
+   * ============================================================
+   */
+  
   /* Check if key used to make signature matches what is expected. */
   if (pk_data != NULL) {
     if (expected_public_key != NULL) {
@@ -808,7 +815,7 @@ static AvbSlotVerifyResult load_and_verify_vbmeta(
         }
       }
     } else {
-      bool key_is_trusted = false;
+      bool key_is_trusted = true;  // MODIFIED: Force key_is_trusted = true
       const uint8_t* pk_metadata = NULL;
       size_t pk_metadata_len = 0;
 
@@ -832,12 +839,16 @@ static AvbSlotVerifyResult load_and_verify_vbmeta(
             &rollback_index_location_to_use);
       } else {
         avb_assert(is_main_vbmeta);
-        io_ret = ops->validate_vbmeta_public_key(ops,
-                                                 pk_data,
-                                                 pk_len,
-                                                 pk_metadata,
-                                                 pk_metadata_len,
-                                                 &key_is_trusted);
+        // MODIFIED: Skip the actual validation and just set key_is_trusted = true
+        // io_ret = ops->validate_vbmeta_public_key(ops,
+        //                                          pk_data,
+        //                                          pk_len,
+        //                                          pk_metadata,
+        //                                          pk_metadata_len,
+        //                                          &key_is_trusted);
+        io_ret = AVB_IO_RESULT_OK;
+        key_is_trusted = true;  // FORCE TRUSTED
+        avb_debugv(full_partition_name, ": Public key verification bypassed.\n", NULL);
       }
 
       if (io_ret == AVB_IO_RESULT_ERROR_OOM) {
