@@ -21,7 +21,6 @@
 #include <mt-plat/mtk_boot_common.h>
 #endif
 
-
 #include "lcm_drv.h"
 
 #ifdef BUILD_LK
@@ -44,12 +43,13 @@
 #define LCM_LOGI(fmt, args...)  pr_info("[KERNEL/"LOG_TAG"]"fmt, ##args)
 #define LCM_LOGD(fmt, args...)  pr_info("[KERNEL/"LOG_TAG"]"fmt, ##args)
 #endif
-//extern int gesture_flag;
-//extern int hx_tp_oppo6765;
-
 
 #define HX83102D_TRULY_TRULY_LCM_ID (0x65)
+
+#ifndef BUILD_LK
 #include "disp_dts_gpio.h"
+#endif
+
 static const unsigned int BL_MIN_LEVEL = 20;
 #ifndef BUILD_LK
 typedef struct LCM_UTIL_FUNCS LCM_UTIL_FUNCS;
@@ -181,6 +181,7 @@ MODULE_AUTHOR("cheng.wang <wangcheng7@huaqin.com>");
 MODULE_DESCRIPTION("MTK LCD BIAS I2C Driver");
 MODULE_LICENSE("GPL");
 #else
+/* LK: I2C for NT5038 */
 #define NT5038_SLAVE_ADDR_WRITE  0x7C
 #define I2C_I2C_LCD_BIAS_CHANNEL 3
 static struct mt_i2c_t NT5038_i2c;
@@ -201,9 +202,9 @@ static int nt5038_i2c_write_byte(kal_uint8 addr, kal_uint8 value)
 	return ret_code;
 }
 #endif
+
 #define MDELAY(n)        (lcm_util.mdelay(n))
 #define UDELAY(n)        (lcm_util.udelay(n))
-
 
 #define dsi_set_cmdq_V22(cmdq, cmd, count, ppara, force_update) \
     lcm_util.dsi_set_cmdq_V22(cmdq, cmd, count, ppara, force_update)
@@ -222,25 +223,6 @@ static int nt5038_i2c_write_byte(kal_uint8 addr, kal_uint8 value)
 #ifdef OPLUS_BUG_STABILITY
 #define SET_LCD_BIAS_EN(en, seq, value)                           lcm_util.set_lcd_bias_en(en, seq, value)
 #endif
-
-#ifndef BUILD_LK
-#include <linux/kernel.h>
-#include <linux/module.h>
-#include <linux/fs.h>
-#include <linux/slab.h>
-#include <linux/init.h>
-#include <linux/list.h>
-#include <linux/i2c.h>
-#include <linux/irq.h>
-#include <linux/uaccess.h>
-#include <linux/interrupt.h>
-#include <linux/io.h>
-#include <linux/platform_device.h>
-#include <linux/gpio.h>
-#include <soc/oppo/device_info.h>
-#endif
-
-
 
 /* static unsigned char lcd_id_pins_value = 0xFF; */
 static const unsigned char LCD_MODULE_ID = 0x01;
@@ -273,71 +255,16 @@ struct LCM_setting_table {
     unsigned char count;
     unsigned char para_list[64];
 };
+
 static int blmap_table[] = {
-	48,17,
-	29,23,
-	25,26,
-	30,23,
-	35,24,
-	34,28,
-	39,26,
-	40,25,
-	42,21,
-	41,23,
-	44,19,
-	44,19,
-	50,3,
-	51,7,
-	52,9,
-	58,34,
-	58,33,
-	64,65,
-	61,48,
-	71,106,
-	68,87,
-	70,100,
-	77,146,
-	78,146,
-	87,211,
-	88,219,
-	87,210,
-	88,213,
-	125,542,
-	96,272,
-	91,221,
-	145,757,
-	122,522,
-	183,1166,
-	122,502,
-	155,872,
-	161,943,
-	151,823,
-	190,1300,
-	164,975,
-	264,2255,
-	152,785,
-	277,2467,
-	187,1228,
-	239,1961,
-	203,1440,
-	242,2015,
-	271,2446,
-	284,2645,
-	310,3045,
-	303,2936,
-	338,3510,
-	329,3357,
-	374,4123,
-	371,4074,
-	387,4357,
-	352,3720,
-	493,6294,
-	445,5407,
-	477,6015,
-	490,6255,
-	516,6760,
-	584,8110,
-	326,2906,
+	48,17, 29,23, 25,26, 30,23, 35,24, 34,28, 39,26, 40,25,
+	42,21, 41,23, 44,19, 44,19, 50,3, 51,7, 52,9, 58,34,
+	58,33, 64,65, 61,48, 71,106, 68,87, 70,100, 77,146, 78,146,
+	87,211, 88,219, 87,210, 88,213, 125,542, 96,272, 91,221, 145,757,
+	122,522, 183,1166, 122,502, 155,872, 161,943, 151,823, 190,1300, 164,975,
+	264,2255, 152,785, 277,2467, 187,1228, 239,1961, 203,1440, 242,2015, 271,2446,
+	284,2645, 310,3045, 303,2936, 338,3510, 329,3357, 374,4123, 371,4074, 387,4357,
+	352,3720, 493,6294, 445,5407, 477,6015, 490,6255, 516,6760, 584,8110, 326,2906,
 };
 
 static struct LCM_setting_table lcm_suspend_setting[] = {
@@ -354,10 +281,10 @@ static struct LCM_setting_table init_setting_vdo[] = {
     {0xB2,14, {0x00,0x00,0x06,0x40,0x00,0x0A,0xEE,0x35,0x00,0x00,0x00,0x00,0x14,0xA0}},
     {0xB4,14, {0x0C,0x54,0x0C,0x54,0x0C,0x54,0x0C,0x54,0x05,0xFF,0x03,0x00,0x00,0xFF}},
     {0xCC, 1, {0x02}},
-    {0xD3,25, {0x0F,0x0E,0x3C,0x01,0x00,0x08,0x00,0x37,0x37,0x34,0x37,0x06,0x06,0x0A,0x00,0x32,0x10,0x04,0x00,0x04,0x54,0x16,0x4E,0x00,0x00}}, //delay 5ms
+    {0xD3,25, {0x0F,0x0E,0x3C,0x01,0x00,0x08,0x00,0x37,0x37,0x34,0x37,0x06,0x06,0x0A,0x00,0x32,0x10,0x04,0x00,0x04,0x54,0x16,0x4E,0x00,0x00}},
     {REGFLAG_DELAY, 5, {}},
     {0xD5,44, {0x25,0x24,0x18,0x18,0x18,0x18,0x3A,0x3A,0x18,0x18,0x21,0x20,0x23,0x22,0x19,0x19,0x19,0x19,0x01,0x00,0x01,0x00,0x03,0x02,0x03,0x02,0x05,0x04,
-               0x05,0x04,0x07,0x06,0x07,0x06,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18}},//delay 5ms
+               0x05,0x04,0x07,0x06,0x07,0x06,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18}},
     {REGFLAG_DELAY, 5, {}},
     {0xE7, 3, {0xFF,0x0D,0x01}},
     {0xBD, 1, {0x01}},
@@ -373,13 +300,13 @@ static struct LCM_setting_table init_setting_vdo[] = {
     {0xB4, 8, {0x42,0x00,0x33,0x00,0x33,0x88,0xB3,0x00}},
     {0xB1, 3, {0x7F,0x03,0xFF}},
     {0xBD, 1, {0x00}},
-    {0x35, 1, {0x00}},	//TE on
+    {0x35, 1, {0x00}},
     {0x11, 0, {}},
     {REGFLAG_DELAY, 62, {}},
     {0x29, 0, {}},
     {REGFLAG_DELAY, 22, {}},
     {0x51, 2, {0x00,0x00}},
-    {0xC9, 4, {0x04,0x08,0x76,0x01}}, //PWM频率30KHZ
+    {0xC9, 4, {0x04,0x08,0x76,0x01}},
     {0x55, 1, {0x01}},
     {REGFLAG_DELAY, 10, {}},
     {0xE4, 15, {0x2D,0x01,0x2C,0x41,0x4B,0x6A,0x7F,0x9D,0xB3,0xA0,0xA0,0xE7,0xFF,0xFF,0x03}},
@@ -387,32 +314,38 @@ static struct LCM_setting_table init_setting_vdo[] = {
     {0xE4, 39, {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55}},
     {0xBD, 1, {0x00}},
     {0x53, 1, {0x24}},
+    {REGFLAG_END_OF_TABLE, 0, {}}
 };
 
 static struct LCM_setting_table bl_level[] = {
     {0x51, 2, {0x0F, 0xFF} },
     {REGFLAG_END_OF_TABLE, 0x00, {} }
 };
+
 static struct LCM_setting_table bl_level_dimming_exit[] = {
 	{0x53, 1, {0x24}},
     {0x51, 2, {0x0F, 0xFF} },
     {REGFLAG_END_OF_TABLE, 0x00, {} }
 };
+
 static struct LCM_setting_table lcm_cabc_enter_setting_ui[] = {
     {0x55, 1, {0x01}},
     {REGFLAG_DELAY, 10, {}},
     {REGFLAG_END_OF_TABLE, 0x00, {} }
 };
+
 static struct LCM_setting_table lcm_cabc_enter_setting_still[] = {
     {0x55, 1, {0x02}},
     {REGFLAG_DELAY, 10, {}},
     {REGFLAG_END_OF_TABLE, 0x00, {} }
 };
+
 static struct LCM_setting_table lcm_cabc_enter_setting_moving[] = {
     {0x55, 1, {0x03}},
     {REGFLAG_DELAY, 10, {}},
     {REGFLAG_END_OF_TABLE, 0x00, {} }
 };
+
 static struct LCM_setting_table lcm_cabc_exit_setting[] = {
     {0x55, 1, {0x00}},
     {REGFLAG_DELAY, 10, {}},
@@ -453,13 +386,10 @@ static void push_table(void *cmdq, struct LCM_setting_table *table,
     }
 }
 
-
 static void lcm_set_util_funcs(const LCM_UTIL_FUNCS *util)
 {
     memcpy(&lcm_util, util, sizeof(LCM_UTIL_FUNCS));
 }
-
-
 
 static void lcm_get_params(LCM_PARAMS *params)
 {
@@ -472,30 +402,27 @@ static void lcm_get_params(LCM_PARAMS *params)
     params->height = FRAME_HEIGHT;
     params->physical_width = LCM_PHYSICAL_WIDTH/1000;
     params->physical_height = LCM_PHYSICAL_HEIGHT/1000;
+    
+#ifndef BUILD_LK
     params->physical_width_um = LCM_PHYSICAL_WIDTH;
     params->physical_height_um = LCM_PHYSICAL_HEIGHT;
-//    params->density = LCM_DENSITY;
+#endif
 
     params->dsi.mode = SYNC_PULSE_VDO_MODE;
     params->dsi.switch_mode_enable = 0;
 
-
     params->dsi.LANE_NUM = LCM_FOUR_LANE;
-    /* The following defined the fomat for data coming from LCD engine. */
     params->dsi.data_format.color_order = LCM_COLOR_ORDER_RGB;
     params->dsi.data_format.trans_seq = LCM_DSI_TRANS_SEQ_MSB_FIRST;
     params->dsi.data_format.padding = LCM_DSI_PADDING_ON_LSB;
     params->dsi.data_format.format = LCM_DSI_FORMAT_RGB888;
 
-    /* Highly depends on LCD driver capability. */
     params->dsi.packet_size = 256;
-    /* video mode timing */
     params->dsi.PS = LCM_PACKED_PS_24BIT_RGB888;
 
     params->dsi.vertical_sync_active = 2;
     params->dsi.vertical_backporch = 10;
     params->dsi.vertical_frontporch = 240;
-    //params->dsi.vertical_frontporch_for_low_power = 540;
     params->dsi.vertical_active_line = FRAME_HEIGHT;
 
     params->dsi.horizontal_sync_active = 19;
@@ -503,14 +430,13 @@ static void lcm_get_params(LCM_PARAMS *params)
     params->dsi.horizontal_frontporch = 20;
     params->dsi.horizontal_active_pixel = FRAME_WIDTH;
     params->dsi.ssc_disable = 1;
-    /* this value must be in MTK suggested table */
     params->dsi.PLL_CLOCK = 276;
 	params->dsi.horizontal_backporch_dyn = 0x86;
 	params->dsi.data_rate_dyn = 564;
-    /* clk continuous video mode */
     params->dsi.cont_clock = 0;
-
     params->dsi.clk_lp_per_line_enable = 0;
+
+#ifndef BUILD_LK
     if (get_boot_mode() == META_BOOT) {
         boot_mode++;
         LCM_LOGI("META_BOOT\n");
@@ -523,7 +449,7 @@ static void lcm_get_params(LCM_PARAMS *params)
         boot_mode++;
         LCM_LOGI("ATE_FACTORY_BOOT\n");
     }
-    if (get_boot_mode() == FACTORY_BOOT)     {
+    if (get_boot_mode() == FACTORY_BOOT) {
         boot_mode++;
         LCM_LOGI("FACTORY_BOOT\n");
     }
@@ -540,146 +466,213 @@ static void lcm_get_params(LCM_PARAMS *params)
 	params->brightness_max = 4095;
 	params->brightness_min = 10;
 	register_device_proc("lcd", "hx83102d", "TRULY_TRULY_SEVEN");
-
+#else
+    /* LK: تفعيل ESD check فقط */
+    params->dsi.esd_check_enable = 1;
+    params->dsi.customization_esd_check_enable = 0;
+    params->dsi.lcm_esd_check_table[0].cmd = 0x0A;
+    params->dsi.lcm_esd_check_table[0].count = 1;
+    params->dsi.lcm_esd_check_table[0].para_list[0] = 0x9D;
+#endif
 }
 
 static void lcm_init_power(void)
 {
-	LCM_LOGI("%s: enter\n", __func__);
-	disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENP1);
-	MDELAY(5);
-	disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENN1);
-	MDELAY(5);
-	if (nt5038_i2c_client != NULL) {
-		nt5038_i2c_write_byte(nt5038_cmd_data[0].cmd, nt5038_cmd_data[0].data);
-		MDELAY(1);
-		nt5038_i2c_write_byte(nt5038_cmd_data[1].cmd, nt5038_cmd_data[1].data);
-		MDELAY(1);
-		nt5038_i2c_write_byte(nt5038_cmd_data[2].cmd, nt5038_cmd_data[2].data);
-		MDELAY(1);
-	}
-	else {
-		display_bias_setting(nt5038_cmd_data[0].data);
-		MDELAY(1);
-	}
-
-	LCM_LOGI("%s: exit\n", __func__);
+    LCM_LOGI("%s: enter\n", __func__);
+#ifndef BUILD_LK
+    disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENP1);
+    MDELAY(5);
+    disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENN1);
+    MDELAY(5);
+    if (nt5038_i2c_client != NULL) {
+        nt5038_i2c_write_byte(nt5038_cmd_data[0].cmd, nt5038_cmd_data[0].data);
+        MDELAY(1);
+        nt5038_i2c_write_byte(nt5038_cmd_data[1].cmd, nt5038_cmd_data[1].data);
+        MDELAY(1);
+        nt5038_i2c_write_byte(nt5038_cmd_data[2].cmd, nt5038_cmd_data[2].data);
+        MDELAY(1);
+    }
+    else {
+        display_bias_setting(nt5038_cmd_data[0].data);
+        MDELAY(1);
+    }
+#else
+    /* LK: استخدام GPIO مباشر */
+    mt_set_gpio_mode(GPIO_LCD_BIAS_ENP_PIN, GPIO_MODE_GPIO);
+    mt_set_gpio_dir(GPIO_LCD_BIAS_ENP_PIN, GPIO_DIR_OUT);
+    mt_set_gpio_out(GPIO_LCD_BIAS_ENP_PIN, GPIO_OUT_ONE);
+    MDELAY(5);
+    
+    mt_set_gpio_mode(GPIO_LCD_BIAS_ENN_PIN, GPIO_MODE_GPIO);
+    mt_set_gpio_dir(GPIO_LCD_BIAS_ENN_PIN, GPIO_DIR_OUT);
+    mt_set_gpio_out(GPIO_LCD_BIAS_ENN_PIN, GPIO_OUT_ONE);
+    MDELAY(5);
+    
+    nt5038_i2c_write_byte(nt5038_cmd_data[0].cmd, nt5038_cmd_data[0].data);
+    MDELAY(1);
+    nt5038_i2c_write_byte(nt5038_cmd_data[1].cmd, nt5038_cmd_data[1].data);
+    MDELAY(1);
+    nt5038_i2c_write_byte(nt5038_cmd_data[2].cmd, nt5038_cmd_data[2].data);
+    MDELAY(1);
+#endif
+    LCM_LOGI("%s: exit\n", __func__);
 }
 
 static void lcm_suspend_power(void)
 {
-	LCM_LOGI("%s: enter\n", __func__);
-	if (0 == tp_gesture_enable_flag())
-	{
-		disp_dts_gpio_select_state(DTS_GPIO_STATE_LCM_RST_OUT0);
-		MDELAY(2);
-		disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENN0);
-		MDELAY(5);
-		disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENP0);
-		MDELAY(5);
-	}
-
-	LCM_LOGI("%s: exit\n", __func__);
+    LCM_LOGI("%s: enter\n", __func__);
+#ifndef BUILD_LK
+    if (0 == tp_gesture_enable_flag())
+    {
+        disp_dts_gpio_select_state(DTS_GPIO_STATE_LCM_RST_OUT0);
+        MDELAY(2);
+        disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENN0);
+        MDELAY(5);
+        disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENP0);
+        MDELAY(5);
+    }
+#else
+    mt_set_gpio_out(GPIO_LCD_BIAS_ENN_PIN, GPIO_OUT_ZERO);
+    MDELAY(5);
+    mt_set_gpio_out(GPIO_LCD_BIAS_ENP_PIN, GPIO_OUT_ZERO);
+    MDELAY(5);
+#endif
+    LCM_LOGI("%s: exit\n", __func__);
 }
 
 #ifdef OPLUS_BUG_STABILITY
 static void lcm_shudown_power(void)
 {
     LCM_LOGI("%s: enter\n", __func__);
+#ifndef BUILD_LK
     disp_dts_gpio_select_state(DTS_GPIO_STATE_LCM_RST_OUT0);
     MDELAY(2);
     disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENN0);
     MDELAY(2);
     disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENP0);
+#else
+    mt_set_gpio_out(LCM_RESET_PIN, GPIO_OUT_ZERO);
+    MDELAY(2);
+    mt_set_gpio_out(GPIO_LCD_BIAS_ENN_PIN, GPIO_OUT_ZERO);
+    MDELAY(2);
+    mt_set_gpio_out(GPIO_LCD_BIAS_ENP_PIN, GPIO_OUT_ZERO);
+#endif
     LCM_LOGI("%s: exit\n", __func__);
 }
 #endif
 
 static void lcm_resume_power(void)
 {
-	LCM_LOGI("%s: enter\n", __func__);
-	//if(!gesture_flag) 
-	{
-		disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENP1);
-		MDELAY(5);
-		disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENN1);
-		MDELAY(5);
-		if (nt5038_i2c_client != NULL) {
-			nt5038_i2c_write_byte(nt5038_cmd_data[0].cmd, nt5038_cmd_data[0].data);
-			MDELAY(1);
-			nt5038_i2c_write_byte(nt5038_cmd_data[1].cmd, nt5038_cmd_data[1].data);
-			MDELAY(1);
-			nt5038_i2c_write_byte(nt5038_cmd_data[2].cmd, nt5038_cmd_data[2].data);
-			MDELAY(1);
-		}
-		else {
-			display_bias_setting(nt5038_cmd_data[0].data);
-			MDELAY(1);
-		}
-	}
-	LCM_LOGI("%s: exit\n", __func__);
+    LCM_LOGI("%s: enter\n", __func__);
+#ifndef BUILD_LK
+    disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENP1);
+    MDELAY(5);
+    disp_dts_gpio_select_state(DTS_GPIO_STATE_LCD_BIAS_ENN1);
+    MDELAY(5);
+    if (nt5038_i2c_client != NULL) {
+        nt5038_i2c_write_byte(nt5038_cmd_data[0].cmd, nt5038_cmd_data[0].data);
+        MDELAY(1);
+        nt5038_i2c_write_byte(nt5038_cmd_data[1].cmd, nt5038_cmd_data[1].data);
+        MDELAY(1);
+        nt5038_i2c_write_byte(nt5038_cmd_data[2].cmd, nt5038_cmd_data[2].data);
+        MDELAY(1);
+    }
+    else {
+        display_bias_setting(nt5038_cmd_data[0].data);
+        MDELAY(1);
+    }
+#else
+    mt_set_gpio_out(GPIO_LCD_BIAS_ENP_PIN, GPIO_OUT_ONE);
+    MDELAY(5);
+    mt_set_gpio_out(GPIO_LCD_BIAS_ENN_PIN, GPIO_OUT_ONE);
+    MDELAY(5);
+    nt5038_i2c_write_byte(nt5038_cmd_data[0].cmd, nt5038_cmd_data[0].data);
+    MDELAY(1);
+    nt5038_i2c_write_byte(nt5038_cmd_data[1].cmd, nt5038_cmd_data[1].data);
+    MDELAY(1);
+    nt5038_i2c_write_byte(nt5038_cmd_data[2].cmd, nt5038_cmd_data[2].data);
+    MDELAY(1);
+#endif
+    LCM_LOGI("%s: exit\n", __func__);
 }
 
 static void lcm_init(void)
 {
     int size;
-	LCM_LOGI("%s: enter\n", __func__);
-	disp_dts_gpio_select_state(DTS_GPIO_STATE_LCM_RST_OUT1);
-	MDELAY(5);
-	disp_dts_gpio_select_state(DTS_GPIO_STATE_LCM_RST_OUT0);
-	MDELAY(2);
-	disp_dts_gpio_select_state(DTS_GPIO_STATE_LCM_RST_OUT1);
-	MDELAY(50);
-
+    LCM_LOGI("%s: enter\n", __func__);
+    
+#ifndef BUILD_LK
+    disp_dts_gpio_select_state(DTS_GPIO_STATE_LCM_RST_OUT1);
+    MDELAY(5);
+    disp_dts_gpio_select_state(DTS_GPIO_STATE_LCM_RST_OUT0);
+    MDELAY(2);
+    disp_dts_gpio_select_state(DTS_GPIO_STATE_LCM_RST_OUT1);
+    MDELAY(50);
     lcd_queue_load_tp_fw();
+#else
+    /* LK: GPIO مباشر */
+    mt_set_gpio_mode(LCM_RESET_PIN, GPIO_MODE_GPIO);
+    mt_set_gpio_dir(LCM_RESET_PIN, GPIO_DIR_OUT);
+    mt_set_gpio_out(LCM_RESET_PIN, GPIO_OUT_ONE);
+    MDELAY(5);
+    mt_set_gpio_out(LCM_RESET_PIN, GPIO_OUT_ZERO);
+    MDELAY(2);
+    mt_set_gpio_out(LCM_RESET_PIN, GPIO_OUT_ONE);
+    MDELAY(50);
+#endif
 
-    size = sizeof(init_setting_vdo) /
-        sizeof(struct LCM_setting_table);
+    size = sizeof(init_setting_vdo) / sizeof(struct LCM_setting_table);
     push_table(NULL, init_setting_vdo, size, 1);
 
-	LCM_LOGI("%s: exit\n", __func__);
+    LCM_LOGI("%s: exit\n", __func__);
 }
 
 static void lcm_suspend(void)
 {
     LCM_LOGI("%s: enter\n", __func__);
     push_table(NULL, lcm_suspend_setting,
-        sizeof(lcm_suspend_setting) / sizeof(struct LCM_setting_table),
-        1);
+        sizeof(lcm_suspend_setting) / sizeof(struct LCM_setting_table), 1);
     MDELAY(10);
-
-
     LCM_LOGI("%s: exit\n", __func__);
 }
 
 static void lcm_resume(void)
 {
-	int size;
-	LCM_LOGI("%s: enter\n", __func__);
-	disp_dts_gpio_select_state(DTS_GPIO_STATE_LCM_RST_OUT1);
-	MDELAY(5);
-	disp_dts_gpio_select_state(DTS_GPIO_STATE_LCM_RST_OUT0);
-	MDELAY(2);
-	disp_dts_gpio_select_state(DTS_GPIO_STATE_LCM_RST_OUT1);
-	MDELAY(50);
+    int size;
+    LCM_LOGI("%s: enter\n", __func__);
+    
+#ifndef BUILD_LK
+    disp_dts_gpio_select_state(DTS_GPIO_STATE_LCM_RST_OUT1);
+    MDELAY(5);
+    disp_dts_gpio_select_state(DTS_GPIO_STATE_LCM_RST_OUT0);
+    MDELAY(2);
+    disp_dts_gpio_select_state(DTS_GPIO_STATE_LCM_RST_OUT1);
+    MDELAY(50);
+    lcd_queue_load_tp_fw();
+#else
+    mt_set_gpio_out(LCM_RESET_PIN, GPIO_OUT_ONE);
+    MDELAY(5);
+    mt_set_gpio_out(LCM_RESET_PIN, GPIO_OUT_ZERO);
+    MDELAY(2);
+    mt_set_gpio_out(LCM_RESET_PIN, GPIO_OUT_ONE);
+    MDELAY(50);
+#endif
 
-	lcd_queue_load_tp_fw();
-
-	size = sizeof(init_setting_vdo) /
-		sizeof(struct LCM_setting_table);
-	push_table(NULL, init_setting_vdo, size, 1);
-	switch (cabc_lastlevel) {
-		case 1 :
-			push_table(NULL, lcm_cabc_enter_setting_ui, sizeof(lcm_cabc_enter_setting_ui) / sizeof(struct LCM_setting_table), 1);
-	        break;
-		case 2 :
-			push_table(NULL, lcm_cabc_enter_setting_still, sizeof(lcm_cabc_enter_setting_still) / sizeof(struct LCM_setting_table), 1);
-	        break;
-		case 3 :
-			push_table(NULL, lcm_cabc_enter_setting_moving, sizeof(lcm_cabc_enter_setting_moving) / sizeof(struct LCM_setting_table), 1);
-		    break;
-	}
-	LCM_LOGI("%s: exit\n", __func__);
+    size = sizeof(init_setting_vdo) / sizeof(struct LCM_setting_table);
+    push_table(NULL, init_setting_vdo, size, 1);
+    
+    switch (cabc_lastlevel) {
+        case 1:
+            push_table(NULL, lcm_cabc_enter_setting_ui, sizeof(lcm_cabc_enter_setting_ui) / sizeof(struct LCM_setting_table), 1);
+            break;
+        case 2:
+            push_table(NULL, lcm_cabc_enter_setting_still, sizeof(lcm_cabc_enter_setting_still) / sizeof(struct LCM_setting_table), 1);
+            break;
+        case 3:
+            push_table(NULL, lcm_cabc_enter_setting_moving, sizeof(lcm_cabc_enter_setting_moving) / sizeof(struct LCM_setting_table), 1);
+            break;
+    }
+    LCM_LOGI("%s: exit\n", __func__);
 }
 
 #ifdef BUILD_LK
@@ -711,13 +704,11 @@ static unsigned int lcm_esd_check(void)
     LCM_LOGI("%s: Performing ESD check\n", __func__);
     MDELAY(10);
     
-    /* Read register 0x0A as defined in lcm_esd_check_table */
     read_reg_v2(0x0A, buffer, 1);
     id = buffer[0];
     
     LCM_LOGI("%s: Read ID = 0x%02x, Expected = 0x9D\n", __func__, id);
     
-    /* Return 0 if value matches expected (0x9D), 1 if mismatch */
     if (id == 0x9D) {
         LCM_LOGI("%s: ESD check passed\n", __func__);
         return 0;  /* No ESD detected */
@@ -730,46 +721,46 @@ static unsigned int lcm_esd_check(void)
 
 static void lcm_setbacklight_cmdq(void *handle, unsigned int level)
 {
+    LCM_LOGI("%s, hx83102d_truly_truly backlight: level = %d\n", __func__, level);
+    
+    if (level == 3768) {
+        level = 3767;
+    }
+    
+    if (level == 0) {
+        bl_level_dimming_exit[1].para_list[0] = (level >> 8) & 0x0F;
+        bl_level_dimming_exit[1].para_list[1] = level & 0xFF;
+        push_table(handle, bl_level_dimming_exit,
+            sizeof(bl_level_dimming_exit) / sizeof(struct LCM_setting_table), 1);
+    } else {
+        if (level > 4095) {
+            level = 4095;
+        } else if (level > 0 && level < 10) {
+            level = 10;
+        }
 
-    LCM_LOGI("%s,hx83102d_truly_truly backlight: level = %d\n", __func__, level);
-	if(level == 3768) {
-		level = 3767;
-	}
-	if (level == 0){
-		bl_level_dimming_exit[1].para_list[0] = (level >> 8) & 0x0F;
-		bl_level_dimming_exit[1].para_list[1] = level & 0xFF;
-        push_table(handle,
-			bl_level_dimming_exit,
-			sizeof(bl_level_dimming_exit) / sizeof(struct LCM_setting_table),
-			1);
-	}
-	else{
-		if (level > 4095){
-			level = 4095;
-		}else if(level > 0 && level < 10){
-			level = 10;
-		}
-
-		bl_level[0].para_list[0] = (level >> 8) & 0x0F;
-		bl_level[0].para_list[1] = level & 0xFF;
-    	push_table(handle,
-        	bl_level,
-        	sizeof(bl_level) / sizeof(struct LCM_setting_table),
-        	1);
-		}
+        bl_level[0].para_list[0] = (level >> 8) & 0x0F;
+        bl_level[0].para_list[1] = level & 0xFF;
+        push_table(handle, bl_level,
+            sizeof(bl_level) / sizeof(struct LCM_setting_table), 1);
+    }
 }
 
 static void lcm_set_cabc_mode_cmdq(void *handle, unsigned int level)
 {
     printk("%s [lcd] cabc_mode is %d \n", __func__, level);
-	if (level == 1) {
-        push_table(handle,lcm_cabc_enter_setting_ui, sizeof(lcm_cabc_enter_setting_ui) / sizeof(struct LCM_setting_table), 1);
+    if (level == 1) {
+        push_table(handle, lcm_cabc_enter_setting_ui,
+            sizeof(lcm_cabc_enter_setting_ui) / sizeof(struct LCM_setting_table), 1);
     } else if (level == 2) {
-        push_table(handle,lcm_cabc_enter_setting_still, sizeof(lcm_cabc_enter_setting_still) / sizeof(struct LCM_setting_table), 1);
+        push_table(handle, lcm_cabc_enter_setting_still,
+            sizeof(lcm_cabc_enter_setting_still) / sizeof(struct LCM_setting_table), 1);
     } else if (level == 3) {
-        push_table(handle,lcm_cabc_enter_setting_moving, sizeof(lcm_cabc_enter_setting_moving) / sizeof(struct LCM_setting_table), 1);
+        push_table(handle, lcm_cabc_enter_setting_moving,
+            sizeof(lcm_cabc_enter_setting_moving) / sizeof(struct LCM_setting_table), 1);
     } else {
-        push_table(handle,lcm_cabc_exit_setting, sizeof(lcm_cabc_exit_setting) / sizeof(struct LCM_setting_table), 1);
+        push_table(handle, lcm_cabc_exit_setting,
+            sizeof(lcm_cabc_exit_setting) / sizeof(struct LCM_setting_table), 1);
     }
     if (level > 0) {
         cabc_lastlevel = level;
