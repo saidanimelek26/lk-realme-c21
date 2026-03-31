@@ -18,8 +18,8 @@ $(OUTBIN): $(OUTELF)
 	$(NOECHO)mv $(BUILDDIR)/lk_header.bin $@
 
 $(OUTELF)-dtb.img: $(OUTBIN)
-		@echo adding dtb: $@
-		$(NOECHO)cat $< $(LK_TOP_DIR)/dtb/$(PHONE_DTB) > $@
+	@echo adding dtb: $@
+	$(NOECHO)cat $< $(LK_TOP_DIR)/main_dtb_header.bin > $@
 
 $(OUTELF)-sign.img: $(OUTELF)-dtb.img
 	@mv $(OUTBIN) $(OUTELF)-bin.img
