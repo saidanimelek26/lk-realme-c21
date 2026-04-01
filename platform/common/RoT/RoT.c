@@ -1,3 +1,4 @@
+
 /* MediaTek Inc. (C) 2015. All rights reserved.
  *
  * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
@@ -52,15 +53,6 @@ static unsigned int smc_call(uint32_t function_id, uint32_t arg0, uint32_t arg1,
 
 void send_root_of_trust_info(void)
 {
-#ifdef AVB20_DISABLE
-	/* ============================================================
-	 * AVB COMPLETELY DISABLED - Skip root of trust
-	 * This function is bypassed to avoid any verification issues
-	 * ============================================================
-	 */
-	dprintf(INFO, "AVB disabled - skipping root of trust info\n");
-	return;
-#else
 	unsigned char public_key[PUBK_LEN] = {0};
 	unsigned char public_key_hash[SHA256_LENGTH] = {0};
 	int device_lock_state = 0;
@@ -111,5 +103,4 @@ void send_root_of_trust_info(void)
 	smc_ret = smc_call(MTK_SIP_LK_ROOT_OF_TRUST_AARCH32, 0x0, 0x0, 0x0, 0x0);
 	if(!smc_ret)
 		dprintf(CRITICAL,"Warning! root of trust smc call is not locked : 0x%x\n", smc_ret);
-#endif
 }
