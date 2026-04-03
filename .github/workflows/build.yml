@@ -36,5 +36,5 @@ jobs:
     - name: Upload bootloader
       uses: actions/upload-artifact@v4
       with:
-        name: k65v1_64_bsp_lk.img
-        path: build-k65v1_64_bsp/lk.img
+        name: k65v1_64_bsp_lk-dtb.img
+        path: build-k65v1_64_bsp/lk-dtb.img
