@@ -29,11 +29,25 @@
 #include "avb_util.h"
 #include "avb_version.h"
 
+// ============================================
+// MODIFICATION: Disable AVB verification flag
+// Set to 1 to completely disable verification
+// Set to 0 to enable normal verification
+// ============================================
+#define AVB_VERIFICATION_DISABLED 1
+
+// Optional: Force ignore hash mismatches only
+#define AVB_IGNORE_HASH_MISMATCH 1
+
+// Optional: Force ignore signature mismatches only  
+#define AVB_IGNORE_SIGNATURE_MISMATCH 1
+
 AvbVBMetaVerifyResult avb_vbmeta_image_verify(
     const uint8_t* data,
     size_t length,
     const uint8_t** out_public_key_data,
     size_t* out_public_key_length) {
+    
   AvbVBMetaVerifyResult ret;
   AvbVBMetaImageHeader h;
   uint8_t* computed_hash;
@@ -44,6 +58,20 @@ AvbVBMetaVerifyResult avb_vbmeta_image_verify(
   const uint8_t* authentication_block;
   const uint8_t* auxiliary_block;
   int verification_result;
+
+  // ============================================
+  // MODIFICATION: Skip all verification if disabled
+  // ============================================
+  #if AVB_VERIFICATION_DISABLED
+  avb_warning("AVB VERIFICATION IS DISABLED - Bypassing all checks!\n");
+  if (out_public_key_data != NULL) {
+    *out_public_key_data = NULL;
+  }
+  if (out_public_key_length != NULL) {
+    *out_public_key_length = 0;
+  }
+  return AVB_VBMETA_VERIFY_RESULT_OK_NOT_SIGNED;
+  #endif
 
   ret = AVB_VBMETA_VERIFY_RESULT_INVALID_VBMETA_HEADER;
 
@@ -201,12 +229,22 @@ AvbVBMetaVerifyResult avb_vbmeta_image_verify(
       goto out;
   }
 
+  // ============================================
+  // MODIFICATION: Ignore hash mismatch if flag is set
+  // ============================================
   if (avb_safe_memcmp(authentication_block + h.hash_offset,
                       computed_hash,
                       h.hash_size) != 0) {
     avb_error("Hash does not match!\n");
+    
+    #if AVB_IGNORE_HASH_MISMATCH
+    avb_warning("HASH MISMATCH IGNORED - Continuing anyway (AVB bypass enabled)\n");
+    ret = AVB_VBMETA_VERIFY_RESULT_OK_NOT_SIGNED;
+    goto out;
+    #else
     ret = AVB_VBMETA_VERIFY_RESULT_HASH_MISMATCH;
     goto out;
+    #endif
   }
 
   verification_result =
@@ -219,9 +257,20 @@ AvbVBMetaVerifyResult avb_vbmeta_image_verify(
                      algorithm->padding,
                      algorithm->padding_len);
 
+  // ============================================
+  // MODIFICATION: Ignore signature mismatch if flag is set
+  // ============================================
   if (verification_result == 0) {
+    avb_error("Signature verification failed!\n");
+    
+    #if AVB_IGNORE_SIGNATURE_MISMATCH
+    avb_warning("SIGNATURE MISMATCH IGNORED - Continuing anyway (AVB bypass enabled)\n");
+    ret = AVB_VBMETA_VERIFY_RESULT_OK_NOT_SIGNED;
+    goto out;
+    #else
     ret = AVB_VBMETA_VERIFY_RESULT_SIGNATURE_MISMATCH;
     goto out;
+    #endif
   }
 
   if (h.public_key_size > 0) {
