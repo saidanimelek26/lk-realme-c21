@@ -36,6 +36,55 @@
 extern "C" {
 #endif
 
+/* ============================================
+ * MODIFICATION: AVB Slot Verification Control
+ * Set to 1 to completely disable slot verification
+ * Set to 0 for normal verification
+ * ============================================ */
+#ifndef AVB_SLOT_VERIFICATION_DISABLED
+#define AVB_SLOT_VERIFICATION_DISABLED 1
+#endif
+
+/* ============================================
+ * MODIFICATION: Force ignore public key rejection
+ * Set to 1 to always accept public keys
+ * ============================================ */
+#ifndef AVB_FORCE_TRUST_PUBLIC_KEY
+#define AVB_FORCE_TRUST_PUBLIC_KEY 1
+#endif
+
+/* ============================================
+ * MODIFICATION: Force ignore rollback index checks
+ * Set to 1 to skip rollback index verification
+ * ============================================ */
+#ifndef AVB_IGNORE_ROLLBACK_INDEX
+#define AVB_IGNORE_ROLLBACK_INDEX 1
+#endif
+
+/* ============================================
+ * MODIFICATION: Force ignore hash mismatches
+ * Set to 1 to skip hash verification
+ * ============================================ */
+#ifndef AVB_IGNORE_HASH_MISMATCH
+#define AVB_IGNORE_HASH_MISMATCH 1
+#endif
+
+/* ============================================
+ * MODIFICATION: Force ignore signature mismatches
+ * Set to 1 to skip signature verification
+ * ============================================ */
+#ifndef AVB_IGNORE_SIGNATURE_MISMATCH
+#define AVB_IGNORE_SIGNATURE_MISMATCH 1
+#endif
+
+/* ============================================
+ * MODIFICATION: Enable verbose bypass logging
+ * Set to 1 to log when verification is bypassed
+ * ============================================ */
+#ifndef AVB_VERBOSE_BYPASS_LOGGING
+#define AVB_VERBOSE_BYPASS_LOGGING 1
+#endif
+
 /* Return codes used in avb_slot_verify(), see that function for
  * documentation for each field.
  *
@@ -51,7 +100,11 @@ typedef enum {
   AVB_SLOT_VERIFY_RESULT_ERROR_PUBLIC_KEY_REJECTED,
   AVB_SLOT_VERIFY_RESULT_ERROR_INVALID_METADATA,
   AVB_SLOT_VERIFY_RESULT_ERROR_UNSUPPORTED_VERSION,
-  AVB_SLOT_VERIFY_RESULT_ERROR_INVALID_ARGUMENT
+  AVB_SLOT_VERIFY_RESULT_ERROR_INVALID_ARGUMENT,
+  /* ============================================
+   * MODIFICATION: Custom return code for bypass
+   * ============================================ */
+  AVB_SLOT_VERIFY_RESULT_BYPASSED = 200
 } AvbSlotVerifyResult;
 
 /* Various error handling modes for when verification fails using a
@@ -126,12 +179,22 @@ typedef enum {
  * vbmeta structs. This flag is useful when booting into recovery on a device
  * not using A/B - see section "Booting into recovery" in README.md for
  * more information.
+ *
+ * ============================================
+ * MODIFICATION: Additional flags
+ * ============================================
+ * AVB_SLOT_VERIFY_FLAGS_FORCE_BYPASS: Force bypass all verification
+ * regardless of other settings. This can be used at runtime.
  */
 typedef enum {
   AVB_SLOT_VERIFY_FLAGS_NONE = 0,
   AVB_SLOT_VERIFY_FLAGS_ALLOW_VERIFICATION_ERROR = (1 << 0),
   AVB_SLOT_VERIFY_FLAGS_RESTART_CAUSED_BY_HASHTREE_CORRUPTION = (1 << 1),
   AVB_SLOT_VERIFY_FLAGS_NO_VBMETA_PARTITION = (1 << 2),
+  /* ============================================
+   * MODIFICATION: Runtime bypass flag
+   * ============================================ */
+  AVB_SLOT_VERIFY_FLAGS_FORCE_BYPASS = (1 << 3)
 } AvbSlotVerifyFlags;
 
 /* Get a textual representation of |result|. */
@@ -387,6 +450,14 @@ void avb_slot_verify_data_free(AvbSlotVerifyData* data);
  * caller passed invalid parameters, for example trying to use
  * AVB_HASHTREE_ERROR_MODE_LOGGING without
  * AVB_SLOT_VERIFY_FLAGS_ALLOW_VERIFICATION_ERROR.
+ *
+ * ============================================
+ * MODIFICATION NOTE:
+ * This function may bypass all verification if:
+ * - AVB_SLOT_VERIFICATION_DISABLED is set to 1 at compile time, OR
+ * - AVB_SLOT_VERIFY_FLAGS_FORCE_BYPASS is set in flags at runtime
+ * See the header for configuration flags.
+ * ============================================
  */
 AvbSlotVerifyResult avb_slot_verify(AvbOps* ops,
                                     const char* const* requested_partitions,
