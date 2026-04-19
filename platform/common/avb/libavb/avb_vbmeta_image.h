@@ -38,6 +38,36 @@ extern "C" {
 #include "avb_crypto.h"
 #include "avb_descriptor.h"
 
+/* ============================================
+ * MODIFICATION: AVB Verification Control Flags
+ * ============================================ */
+
+/* Set to 1 to completely disable AVB verification at compile time
+ * This will make avb_vbmeta_image_verify() always return OK_NOT_SIGNED
+ */
+#ifndef AVB_VERIFICATION_DISABLED
+#define AVB_VERIFICATION_DISABLED 1
+#endif
+
+/* Set to 1 to ignore hash mismatches but still check signatures
+ * Only effective if AVB_VERIFICATION_DISABLED is 0
+ */
+#ifndef AVB_IGNORE_HASH_MISMATCH
+#define AVB_IGNORE_HASH_MISMATCH 1
+#endif
+
+/* Set to 1 to ignore signature mismatches but still check hashes
+ * Only effective if AVB_VERIFICATION_DISABLED is 0
+ */
+#ifndef AVB_IGNORE_SIGNATURE_MISMATCH
+#define AVB_IGNORE_SIGNATURE_MISMATCH 1
+#endif
+
+/* Set to 1 to enable verbose logging of verification bypasses */
+#ifndef AVB_VERBOSE_BYPASS_LOGGING
+#define AVB_VERBOSE_BYPASS_LOGGING 1
+#endif
+
 /* Size of the vbmeta image header. */
 #define AVB_VBMETA_IMAGE_HEADER_SIZE 256
 
@@ -55,10 +85,15 @@ extern "C" {
  *
  * AVB_VBMETA_IMAGE_FLAGS_VERIFICATION_DISABLED: If this flag is set,
  * verification will be disabled and descriptors will not be parsed.
+ *
+ * AVB_VBMETA_IMAGE_FLAGS_VERIFICATION_FORCE_ENABLE: Custom flag to
+ * force verification even if disabled in code (not in spec)
  */
 typedef enum {
   AVB_VBMETA_IMAGE_FLAGS_HASHTREE_DISABLED = (1 << 0),
-  AVB_VBMETA_IMAGE_FLAGS_VERIFICATION_DISABLED = (1 << 1)
+  AVB_VBMETA_IMAGE_FLAGS_VERIFICATION_DISABLED = (1 << 1),
+  /* Custom flag - not part of AVB spec */
+  AVB_VBMETA_IMAGE_FLAGS_VERIFICATION_FORCE_ENABLE = (1 << 15)
 } AvbVBMetaImageFlags;
 
 /* Binary format for header of the vbmeta image.
@@ -228,6 +263,9 @@ void avb_vbmeta_image_header_to_host_byte_order(const AvbVBMetaImageHeader* src,
  * AVB_VBMETA_VERIFY_RESULT_SIGNATURE_MISMATCH is returned if the
  * signature stored in the "Authentication data" block is invalid or
  * doesn't match the public key stored in the vbmeta image.
+ *
+ * AVB_VBMETA_VERIFY_RESULT_BYPASSED is a custom return code indicating
+ * verification was bypassed due to compile-time flags (not in spec)
  */
 typedef enum {
   AVB_VBMETA_VERIFY_RESULT_OK,
@@ -236,6 +274,8 @@ typedef enum {
   AVB_VBMETA_VERIFY_RESULT_UNSUPPORTED_VERSION,
   AVB_VBMETA_VERIFY_RESULT_HASH_MISMATCH,
   AVB_VBMETA_VERIFY_RESULT_SIGNATURE_MISMATCH,
+  /* Custom return code - not part of AVB spec */
+  AVB_VBMETA_VERIFY_RESULT_BYPASSED = 100
 } AvbVBMetaVerifyResult;
 
 /* Get a textual representation of |result|. */
@@ -280,6 +320,12 @@ const char* avb_vbmeta_verify_result_to_string(AvbVBMetaVerifyResult result);
  * This is a low-level function to only verify the vbmeta data - you
  * are likely looking for avb_slot_verify() instead for verifying
  * integrity data for a whole set of partitions.
+ *
+ * ============================================
+ * MODIFICATION NOTE:
+ * This function may bypass verification if AVB_VERIFICATION_DISABLED
+ * is set to 1 at compile time. See the header for configuration flags.
+ * ============================================
  */
 AvbVBMetaVerifyResult avb_vbmeta_image_verify(
     const uint8_t* data,
