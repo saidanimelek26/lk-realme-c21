@@ -34,6 +34,12 @@
 #include "avb_vbmeta_image.h"
 #include "avb_version.h"
 
+/* ============================================
+ * MODIFICATION: AVB Slot Verification Control Flags
+ * Set to 1 to completely disable slot verification
+ * ============================================ */
+#define AVB_SLOT_VERIFICATION_DISABLED 1
+
 /* Maximum number of partitions that can be loaded with avb_slot_verify(). */
 #define MAX_NUMBER_OF_LOADED_PARTITIONS 32
 
@@ -298,6 +304,14 @@ static AvbSlotVerifyResult load_and_verify_hash_partition(
   size_t expected_digest_len = 0;
   uint8_t expected_digest_buf[AVB_SHA512_DIGEST_SIZE];
   const uint8_t* expected_digest = NULL;
+
+  // ============================================
+  // MODIFICATION: Skip hash partition verification if disabled
+  // ============================================
+  #if AVB_SLOT_VERIFICATION_DISABLED
+  avb_debugv("Hash partition verification bypassed\n", NULL);
+  return AVB_SLOT_VERIFY_RESULT_OK;
+  #endif
 
   if (!avb_hash_descriptor_validate_and_byteswap(
           (const AvbHashDescriptor*)descriptor, &hash_desc)) {
@@ -588,6 +602,14 @@ static AvbSlotVerifyResult load_and_verify_vbmeta(
   bool look_for_vbmeta_footer;
   AvbVBMetaData* vbmeta_image_data = NULL;
 
+  // ============================================
+  // MODIFICATION: Skip vbmeta verification if disabled
+  // ============================================
+  #if AVB_SLOT_VERIFICATION_DISABLED
+  avb_debugv("vbmeta verification bypassed for partition: ", partition_name, "\n", NULL);
+  return AVB_SLOT_VERIFY_RESULT_OK;
+  #endif
+
   ret = AVB_SLOT_VERIFY_RESULT_OK;
 
   avb_assert(slot_data != NULL);
@@ -792,12 +814,10 @@ static AvbSlotVerifyResult load_and_verify_vbmeta(
 
   uint32_t rollback_index_location_to_use = rollback_index_location;
 
-  /* ============================================================
-   * MODIFICATION: Disable public key verification
-   * This forces key_is_trusted = true for all vbmeta images
-   * This allows the device to boot even with unsigned images
-   * ============================================================
-   */
+  // ============================================
+  // MODIFICATION: Force public key to be trusted
+  // This bypasses public key validation
+  // ============================================
   
   /* Check if key used to make signature matches what is expected. */
   if (pk_data != NULL) {
@@ -815,7 +835,7 @@ static AvbSlotVerifyResult load_and_verify_vbmeta(
         }
       }
     } else {
-      bool key_is_trusted = true;  // MODIFIED: Force key_is_trusted = true
+      bool key_is_trusted = true;  // MODIFIED: Force to true
       const uint8_t* pk_metadata = NULL;
       size_t pk_metadata_len = 0;
 
@@ -828,15 +848,19 @@ static AvbSlotVerifyResult load_and_verify_vbmeta(
 
       // If we're not using a vbmeta partition, need to use another AvbOps...
       if (flags & AVB_SLOT_VERIFY_FLAGS_NO_VBMETA_PARTITION) {
-        io_ret = ops->validate_public_key_for_partition(
-            ops,
-            full_partition_name,
-            pk_data,
-            pk_len,
-            pk_metadata,
-            pk_metadata_len,
-            &key_is_trusted,
-            &rollback_index_location_to_use);
+        // MODIFIED: Skip validation, assume key is trusted
+        // io_ret = ops->validate_public_key_for_partition(
+        //     ops,
+        //     full_partition_name,
+        //     pk_data,
+        //     pk_len,
+        //     pk_metadata,
+        //     pk_metadata_len,
+        //     &key_is_trusted,
+        //     &rollback_index_location_to_use);
+        io_ret = AVB_IO_RESULT_OK;
+        key_is_trusted = true;  // FORCE TRUSTED
+        avb_debugv(full_partition_name, ": Public key validation bypassed.\n", NULL);
       } else {
         avb_assert(is_main_vbmeta);
         // MODIFIED: Skip the actual validation and just set key_is_trusted = true
@@ -848,7 +872,7 @@ static AvbSlotVerifyResult load_and_verify_vbmeta(
         //                                          &key_is_trusted);
         io_ret = AVB_IO_RESULT_OK;
         key_is_trusted = true;  // FORCE TRUSTED
-        avb_debugv(full_partition_name, ": Public key verification bypassed.\n", NULL);
+        avb_debugv(full_partition_name, ": vbmeta public key validation bypassed.\n", NULL);
       }
 
       if (io_ret == AVB_IO_RESULT_ERROR_OOM) {
@@ -886,15 +910,21 @@ static AvbSlotVerifyResult load_and_verify_vbmeta(
     ret = AVB_SLOT_VERIFY_RESULT_ERROR_IO;
     goto out;
   }
+  
+  // ============================================
+  // MODIFICATION: Ignore rollback index check
+  // ============================================
   if (vbmeta_header.rollback_index < stored_rollback_index) {
     avb_errorv(
         full_partition_name,
         ": Image rollback index is less than the stored rollback index.\n",
         NULL);
-    ret = AVB_SLOT_VERIFY_RESULT_ERROR_ROLLBACK_INDEX;
-    if (!allow_verification_error) {
-      goto out;
-    }
+    // MODIFIED: Don't treat as error, just warn
+    // ret = AVB_SLOT_VERIFY_RESULT_ERROR_ROLLBACK_INDEX;
+    // if (!allow_verification_error) {
+    //   goto out;
+    // }
+    avb_warningv(full_partition_name, ": Rollback index mismatch IGNORED.\n", NULL);
   }
 
   /* Copy vbmeta to vbmeta_images before recursing. */
@@ -1385,6 +1415,46 @@ AvbSlotVerifyResult avb_slot_verify(AvbOps* ops,
   bool allow_verification_error =
       (flags & AVB_SLOT_VERIFY_FLAGS_ALLOW_VERIFICATION_ERROR);
   AvbCmdlineSubstList* additional_cmdline_subst = NULL;
+
+  // ============================================
+  // MODIFICATION: Skip all slot verification if disabled
+  // ============================================
+  #if AVB_SLOT_VERIFICATION_DISABLED
+  avb_warning("AVB SLOT VERIFICATION IS DISABLED - Bypassing all checks!\n");
+  
+  /* Create minimal slot data structure */
+  slot_data = avb_calloc(sizeof(AvbSlotVerifyData));
+  if (slot_data == NULL) {
+    return AVB_SLOT_VERIFY_RESULT_ERROR_OOM;
+  }
+  
+  slot_data->ab_suffix = avb_strdup(ab_suffix ? ab_suffix : "");
+  if (slot_data->ab_suffix == NULL) {
+    avb_free(slot_data);
+    return AVB_SLOT_VERIFY_RESULT_ERROR_OOM;
+  }
+  
+  /* Set a basic cmdline */
+  slot_data->cmdline = avb_strdup("");
+  if (slot_data->cmdline == NULL) {
+    avb_free(slot_data->ab_suffix);
+    avb_free(slot_data);
+    return AVB_SLOT_VERIFY_RESULT_ERROR_OOM;
+  }
+  
+  /* Initialize rollback indexes */
+  for (i = 0; i < AVB_MAX_NUMBER_OF_ROLLBACK_INDEX_LOCATIONS; i++) {
+    slot_data->rollback_indexes[i] = AVB_VER_INITIAL_VALUE;
+  }
+  
+  if (out_data != NULL) {
+    *out_data = slot_data;
+  } else {
+    avb_slot_verify_data_free(slot_data);
+  }
+  
+  return AVB_SLOT_VERIFY_RESULT_OK;
+  #endif
 
   /* Fail early if we're missing the AvbOps needed for slot verification. */
   avb_assert(ops->read_is_device_unlocked != NULL);
