@@ -266,6 +266,10 @@ void _dump_lcm_info(disp_lcm_handle *plcm)
 			DISPCHECK("[LCM] rg_bic: %d, rg_bp: %d, PLL_CLOCK: %d, dsi_clock: %d, ssc_range: %d,	ssc_disable: %d, compatibility_for_nvk: %d, cont_clock: %d\n", p->dsi.rg_bic,  p->dsi.rg_bp,p->dsi.PLL_CLOCK,p->dsi.dsi_clock,p->dsi.ssc_range,p->dsi.ssc_disable,p->dsi.compatibility_for_nvk,p->dsi.cont_clock);
 			DISPCHECK("[LCM] lcm_ext_te_enable: %d, noncont_clock: %d, noncont_clock_period: %d\n", p->dsi.lcm_ext_te_enable,p->dsi.noncont_clock,p->dsi.noncont_clock_period);
 		}
+		
+		if (p->od_table_size > 0) {
+			DISPCHECK("[LCM] od_table_size: %d\n", p->od_table_size);
+		}
 	}
 
 	return;
@@ -782,6 +786,68 @@ void parse_lcm_ops_dt_node(int node_offset, LCM_DTS *lcm_dts)
 			return;
 		}
 	}
+	
+	// parse LCM backlight cmdq table (ported from kernel)
+	len = disp_fdt_getprop_u8_array(node_offset, "backlight_cmdq", dts);
+	if (len <= 0) {
+		DISPERR("%s:%d: Cannot find LCM backlight cmdq table, skip it! \n", __FILE__, __LINE__);
+	} else {
+		if (len > (sizeof(LCM_DATA)*BACKLIGHT_CMDQ_SIZE)) {
+			DISPERR("%s:%d: LCM backlight cmdq table overflow: %d \n", __FILE__, __LINE__, len);
+			return;
+		}
+
+		tmp = &(dts[0]);
+		for (i=0; i<BACKLIGHT_CMDQ_SIZE; i++) {
+			lcm_dts->backlight_cmdq[i].func = (*tmp) & 0xFF;
+			lcm_dts->backlight_cmdq[i].type = (*(tmp+1)) & 0xFF;
+			lcm_dts->backlight_cmdq[i].size = (*(tmp+2)) & 0xFF;
+			tmp_len = 3;
+
+			switch (lcm_dts->backlight_cmdq[i].func) {
+				case LCM_FUNC_GPIO:
+					memcpy(&(lcm_dts->backlight_cmdq[i].data_t1), tmp+3, lcm_dts->backlight_cmdq[i].size);
+					break;
+
+				case LCM_FUNC_I2C:
+					memcpy(&(lcm_dts->backlight_cmdq[i].data_t2), tmp+3, lcm_dts->backlight_cmdq[i].size);
+					break;
+
+				case LCM_FUNC_UTIL:
+					memcpy(&(lcm_dts->backlight_cmdq[i].data_t1), tmp+3, lcm_dts->backlight_cmdq[i].size);
+					break;
+
+				case LCM_FUNC_CMD:
+					switch (lcm_dts->backlight_cmdq[i].type) {
+						case LCM_UTIL_WRITE_CMD_V23:
+							memcpy(&(lcm_dts->backlight_cmdq[i].data_t3), tmp+3, lcm_dts->backlight_cmdq[i].size);
+							break;
+
+						default:
+							DISPERR("%s:%d: %d \n", __FILE__, __LINE__, lcm_dts->backlight_cmdq[i].type);
+							return;
+					}
+					break;
+
+				default:
+					DISPERR("%s:%d: %d \n", __FILE__, __LINE__, (unsigned int)lcm_dts->backlight_cmdq[i].func);
+					return;
+			}
+			tmp_len = tmp_len + lcm_dts->backlight_cmdq[i].size;
+
+			if (tmp_len < len) {
+				tmp = tmp + tmp_len;
+				len = len - tmp_len;
+			} else {
+				break;
+			}
+		}
+		lcm_dts->backlight_cmdq_size = i + 1;
+		if (lcm_dts->backlight_cmdq_size > BACKLIGHT_CMDQ_SIZE) {
+			DISPERR("%s:%d: LCM backlight cmdq table overflow: %d\n", __FILE__, __LINE__, len);
+			return;
+		}
+	}
 }
 
 
@@ -1260,7 +1326,153 @@ int disp_lcm_resume(disp_lcm_handle *plcm)
 	return -1;
 }
 
+// Ported from kernel: AOD (Always on Display) support
+#ifdef LCM_DRIVER_HAS_AOD
+int disp_lcm_aod(disp_lcm_handle *plcm, int enter)
+{
+	LCM_DRIVER *lcm_drv = NULL;
 
+	DISPMSG("%s, enter:%d\n", __func__, enter);
+	if (_is_lcm_inited(plcm)) {
+		lcm_drv = plcm->drv;
+		if (lcm_drv->aod) {
+			lcm_drv->aod(enter);
+			return 0;
+		} else {
+			DISPERR("FATAL ERROR, lcm_drv->aod is null\n");
+			return -1;
+		}
+	}
+
+	DISPERR("lcm_drv is null\n");
+	return -1;
+}
+#endif
+
+// Ported from kernel: Shutdown power handling
+#ifdef LCM_DRIVER_HAS_SHUTDOWN_POWER
+int disp_lcm_shutdown(disp_lcm_handle *plcm)
+{
+	LCM_DRIVER *lcm_drv = NULL;
+	
+	DISPFUNC();
+	if (_is_lcm_inited(plcm)) {
+		lcm_drv = plcm->drv;
+		if (lcm_drv->shutdown_power) {
+			lcm_drv->shutdown_power();
+		}
+		return 0;
+	}
+	DISPERR("lcm_drv is null\n");
+	return -1;
+}
+#endif
+
+// Ported from kernel: Set LCM command support
+#ifdef LCM_DRIVER_HAS_SET_LCM_CMD
+int disp_lcm_set_lcm_cmd(disp_lcm_handle *plcm, void *cmdq_handle,
+	unsigned int *lcm_cmd, unsigned int *lcm_count, unsigned int *lcm_value)
+{
+	LCM_DRIVER *lcm_drv = NULL;
+
+	DISPFUNC();
+	if (_is_lcm_inited(plcm)) {
+		lcm_drv = plcm->drv;
+		if (lcm_drv->set_lcm_cmd) {
+			lcm_drv->set_lcm_cmd(cmdq_handle, lcm_cmd,
+				lcm_count, lcm_value);
+		} else {
+			DISPERR("FATAL ERROR, lcm_drv->set_lcm_cmd is null\n");
+			return -1;
+		}
+
+		return 0;
+	}
+
+	DISPERR("lcm_drv is null\n");
+	return -1;
+}
+#endif
+
+// Ported from kernel: Partial update support
+#ifdef LCM_DRIVER_HAS_VALIDATE_ROI
+int disp_lcm_is_partial_support(disp_lcm_handle *plcm)
+{
+	LCM_DRIVER *lcm_drv = NULL;
+
+	if (_is_lcm_inited(plcm)) {
+		lcm_drv = plcm->drv;
+		if (lcm_drv->validate_roi)
+			return 1;
+	}
+	return 0;
+}
+
+int disp_lcm_validate_roi(disp_lcm_handle *plcm, int *x, int *y, int *w, int *h)
+{
+	LCM_DRIVER *lcm_drv = NULL;
+
+	if (_is_lcm_inited(plcm)) {
+		lcm_drv = plcm->drv;
+		if (lcm_drv->validate_roi) {
+			lcm_drv->validate_roi(x, y, w, h);
+			return 0;
+		}
+		DISPERR("Not support partial roi\n");
+		return -1;
+	}
+	DISPERR("validate roi lcm_drv is null\n");
+	return -1;
+}
+#endif
+
+// Ported from kernel: ATA (Auto Test Area) support
+#ifdef LCM_DRIVER_HAS_ATA_CHECK
+unsigned int disp_lcm_ATA(disp_lcm_handle *plcm)
+{
+	unsigned int ret = 0;
+	LCM_DRIVER *lcm_drv = NULL;
+
+	DISPFUNC();
+	if (_is_lcm_inited(plcm)) {
+		lcm_drv = plcm->drv;
+		if (lcm_drv->ata_check) {
+			ret = lcm_drv->ata_check(NULL);
+		} else {
+			DISPERR("FATAL ERROR, lcm_drv->ata_check is null\n");
+			return 0;
+		}
+
+		return ret;
+	}
+
+	DISPERR("lcm_drv is null\n");
+	return 0;
+}
+#endif
+
+// Ported from kernel: CABC (Content Adaptive Brightness Control) support
+#ifdef LCM_DRIVER_HAS_CABC_MODE
+int disp_lcm_set_cabc_mode(disp_lcm_handle *plcm, void *handle, unsigned int level)
+{
+	LCM_DRIVER *lcm_drv = NULL;
+
+	DISPFUNC();
+	if (_is_lcm_inited(plcm)) {
+		lcm_drv = plcm->drv;
+		if (lcm_drv->set_cabc_mode_cmdq) {
+			lcm_drv->set_cabc_mode_cmdq(handle, level);
+			return 0;
+		} else {
+			DISPERR("FATAL ERROR, lcm_drv->set_cabc_mode_cmdq is null\n");
+			return -1;
+		}
+	}
+
+	DISPERR("lcm_drv is null\n");
+	return -1;
+}
+#endif
 
 #ifdef MY_TODO
 #error "maybe CABC can be moved into lcm_ioctl??"
@@ -1284,9 +1496,6 @@ int disp_lcm_set_backlight(disp_lcm_handle *plcm, int level)
 	DISPERR("lcm_drv is null\n");
 	return -1;
 }
-
-
-
 
 int disp_lcm_ioctl(disp_lcm_handle *plcm, LCM_IOCTL ioctl, unsigned int arg)
 {
