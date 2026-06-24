@@ -1,49 +1,18 @@
-
-# modules
-#
-# args:
-# MODULE : module name (required)
-# MODULE_SRCS : list of source files, local path (required)
-# MODULE_FLOAT_SRCS : list of source files compiled with floating point support (if available)
-# MODULE_DEPS : other modules that this one depends on
-# MODULE_DEFINES : #defines local to this module
-# MODULE_OPTFLAGS : OPTFLAGS local to this module
-# MODULE_COMPILEFLAGS : COMPILEFLAGS local to this module
-# MODULE_CFLAGS : CFLAGS local to this module
-# MODULE_CPPFLAGS : CPPFLAGS local to this module
-# MODULE_ASMFLAGS : ASMFLAGS local to this module
-# MODULE_INCLUDES : include directories local to this module
-# MODULE_SRCDEPS : extra dependencies that all of this module's files depend on
-# MODULE_EXTRA_OBJS : extra .o files that should be linked with the module
-
-# MODULE_ARM_OVERRIDE_SRCS : list of source files, local path that should be force compiled with ARM (if applicable)
-
-# MODULE_OPTIONS : space delimited list of options
-# currently defined options:
-#   extra_warnings - add additional warnings to the front of the module deps
-#   float - module uses floating point instructions/code
-#   test - module as a test/ submodule that will be added if WITH_TESTS is true
-
-# the minimum module rules.mk file is as follows:
-#
-# LOCAL_DIR := $(GET_LOCAL_DIR)
-# MODULE := $(LOCAL_DIR)
-#
-# MODULE_SRCS := $(LOCAL_DIR)/at_least_one_source_file.c
-#
-# include make/module.mk
-
 # test for old style rules.mk
 ifneq ($(flavor MODULE_OBJS),undefined)
 ifneq ($(MODULE_OBJS),)
 $(warning MODULE_OBJS = $(MODULE_OBJS))
-$(error MODULE $(MODULE) is setting MODULE_OBJS, change to MODULE_SRCS)
+$(warning MODULE $(MODULE) is setting MODULE_OBJS - this is deprecated, use MODULE_SRCS)
+# Store for backward compatibility
+MODULE_OLD_OBJS := $(MODULE_OBJS)
 endif
 endif
 ifneq ($(flavor OBJS),undefined)
 ifneq ($(OBJS),)
 $(warning OBJS = $(OBJS))
-$(error MODULE $(MODULE) is probably setting OBJS, change to MODULE_SRCS)
+$(warning MODULE $(MODULE) is using OBJS - this is deprecated, please use MODULE_SRCS)
+# Store for backward compatibility
+MODULE_OLD_OBJS := $(MODULE_OLD_OBJS) $(OBJS)
 endif
 endif
 
@@ -144,6 +113,11 @@ include make/compile.mk
 # MODULE_OBJS is passed back from compile.mk
 #$(info MODULE_OBJS = $(MODULE_OBJS))
 
+# For backward compatibility - add any OBJS that were set directly
+ifneq ($(MODULE_OLD_OBJS),)
+MODULE_OBJS += $(MODULE_OLD_OBJS)
+endif
+
 # build a ld -r style combined object
 MODULE_OBJECT := $(call TOBUILDDIR,$(MODULE_SRCDIR).mod.o)
 $(MODULE_OBJECT): $(MODULE_OBJS) $(MODULE_EXTRA_OBJS)
@@ -175,6 +149,7 @@ MODULE_DEPS :=
 MODULE_SRCS :=
 MODULE_FLOAT_SRCS :=
 MODULE_OBJS :=
+MODULE_OLD_OBJS :=
 MODULE_DEFINES :=
 MODULE_OPTFLAGS :=
 MODULE_COMPILEFLAGS :=
