@@ -1,18 +1,28 @@
 LOCAL_DIR := $(GET_LOCAL_DIR)
 
-MODULES += \
+MODULE := $(LOCAL_DIR)
+
+MODULE_DEPS := \
 	lib/libc \
-	lib/debug \
-	lib/heap \
-	lib/zlib  \
-	lib/libshowlogo	
+	lib/heap
 
-OBJS += \
-	$(LOCAL_DIR)/debug.o \
-	$(LOCAL_DIR)/dpc.o \
-	$(LOCAL_DIR)/event.o \
-	$(LOCAL_DIR)/main.o \
-	$(LOCAL_DIR)/mutex.o \
-	$(LOCAL_DIR)/thread.o \
-	$(LOCAL_DIR)/timer.o
+MODULE_SRCS := \
+	$(LOCAL_DIR)/debug.c \
+	$(LOCAL_DIR)/event.c \
+	$(LOCAL_DIR)/init.c \
+	$(LOCAL_DIR)/mutex.c \
+	$(LOCAL_DIR)/thread.c \
+	$(LOCAL_DIR)/timer.c \
+	$(LOCAL_DIR)/semaphore.c \
+	$(LOCAL_DIR)/mp.c \
+	$(LOCAL_DIR)/port.c
 
+ifeq ($(WITH_KERNEL_VM),1)
+MODULE_DEPS += kernel/vm
+else
+MODULE_DEPS += kernel/novm
+endif
+
+MODULE_OPTIONS := extra_warnings
+
+include make/module.mk

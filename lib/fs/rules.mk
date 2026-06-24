@@ -1,9 +1,11 @@
 LOCAL_DIR := $(GET_LOCAL_DIR)
 
-MODULES += \
+MODULE := $(LOCAL_DIR)
 
-#	lib/fs/ext2
+MODULE_SRCS += $(LOCAL_DIR)/debug.c
+MODULE_SRCS += $(LOCAL_DIR)/fs.c
+MODULE_SRCS += $(LOCAL_DIR)/shell.c
 
-OBJS += \
-	$(LOCAL_DIR)/fs.o \
-	$(LOCAL_DIR)/debug.o
+MODULE_OPTIONS := test
+
+include make/module.mk

@@ -1,6 +1,7 @@
 LOCAL_DIR := $(GET_LOCAL_DIR)
 
 C_STRING_OPS := \
+	bcmp \
 	bcopy \
 	bzero \
 	memchr \
@@ -8,6 +9,7 @@ C_STRING_OPS := \
 	memcpy \
 	memmove \
 	memset \
+	strcasecmp \
 	strcat \
 	strchr \
 	strcmp \
@@ -35,8 +37,8 @@ LIBC_STRING_C_DIR := $(LOCAL_DIR)
 # include the arch specific string routines
 #
 # the makefile may filter out implemented versions from the C_STRING_OPS variable
-include $(LOCAL_DIR)/arch/$(ARCH)/rules.mk
+-include $(LOCAL_DIR)/arch/$(ARCH)/rules.mk
 
-OBJS += \
-	$(addprefix $(LIBC_STRING_C_DIR)/,$(addsuffix .o,$(C_STRING_OPS)))
+MODULE_SRCS += \
+	$(addprefix $(LIBC_STRING_C_DIR)/,$(addsuffix .c,$(C_STRING_OPS)))
 

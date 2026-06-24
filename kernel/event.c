@@ -1,24 +1,9 @@
 /*
- * Copyright (c) 2008-2009 Travis Geiselbrecht
+ * Copyright (c) 2008-2014 Travis Geiselbrecht
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files
- * (the "Software"), to deal in the Software without restriction,
- * including without limitation the rights to use, copy, modify, merge,
- * publish, distribute, sublicense, and/or sell copies of the Software,
- * and to permit persons to whom the Software is furnished to do so,
- * subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be
- * included in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
- * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
- * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
- * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * Use of this source code is governed by a MIT-style
+ * license that can be found in the LICENSE file or at
+ * https://opensource.org/licenses/MIT
  */
 
 /**
@@ -40,13 +25,11 @@
  * @{
  */
 
-#include <debug.h>
-#include <err.h>
+#include <assert.h>
 #include <kernel/event.h>
-
-#if DEBUGLEVEL > 1
-#define EVENT_CHECK 1
-#endif
+#include <kernel/thread.h>
+#include <lk/debug.h>
+#include <lk/err.h>
 
 /**
  * @brief  Initialize an event object
@@ -55,16 +38,8 @@
  * @param initial  Initial value for "signaled" state
  * @param flags    0 or EVENT_FLAG_AUTOUNSIGNAL
  */
-void event_init(event_t *e, bool initial, uint flags)
-{
-#if EVENT_CHECK
-//	ASSERT(e->magic != EVENT_MAGIC);
-#endif
-
-	e->magic = EVENT_MAGIC;
-	e->signalled = initial;
-	e->flags = flags;
-	wait_queue_init(&e->wait);
+void event_init(event_t *e, bool initial, uint flags) {
+    *e = (event_t)EVENT_INITIAL_VALUE(*e, initial, flags);
 }
 
 /**
@@ -76,20 +51,17 @@ void event_init(event_t *e, bool initial, uint flags)
  *
  * @param e        Event object to initialize
  */
-void event_destroy(event_t *e)
-{
-	enter_critical_section();
+void event_destroy(event_t *e) {
+    DEBUG_ASSERT(e->magic == EVENT_MAGIC);
 
-#if EVENT_CHECK
-	ASSERT(e->magic == EVENT_MAGIC);
-#endif
+    THREAD_LOCK(state);
 
-	e->magic = 0;
-	e->signalled = false;
-	e->flags = 0;
-	wait_queue_destroy(&e->wait, true);
+    e->magic = 0;
+    e->signaled = false;
+    e->flags = 0;
+    wait_queue_destroy(&e->wait, true);
 
-	exit_critical_section();
+    THREAD_UNLOCK(state);
 }
 
 /**
@@ -107,41 +79,27 @@ void event_destroy(event_t *e)
  * @return  0 on success, ERR_TIMED_OUT on timeout,
  *         other values on other errors.
  */
-status_t event_wait_timeout(event_t *e, time_t timeout)
-{
-	status_t ret = NO_ERROR;
+status_t event_wait_timeout(event_t *e, lk_time_t timeout) {
+    status_t ret = NO_ERROR;
 
-	enter_critical_section();
+    DEBUG_ASSERT(e->magic == EVENT_MAGIC);
 
-#if EVENT_CHECK
-	ASSERT(e->magic == EVENT_MAGIC);
-#endif
+    THREAD_LOCK(state);
 
-	if (e->signalled) {
-		/* signalled, we're going to fall through */
-		if (e->flags & EVENT_FLAG_AUTOUNSIGNAL) {
-			/* autounsignal flag lets one thread fall through before unsignalling */
-			e->signalled = false;
-		}
-	} else {
-		/* unsignalled, block here */
-		ret = wait_queue_block(&e->wait, timeout);
-		if (ret < 0)
-			goto err;
-	}
+    if (e->signaled) {
+        /* signaled, we're going to fall through */
+        if (e->flags & EVENT_FLAG_AUTOUNSIGNAL) {
+            /* autounsignal flag lets one thread fall through before unsignaling */
+            e->signaled = false;
+        }
+    } else {
+        /* unsignaled, block here */
+        ret = wait_queue_block(&e->wait, timeout);
+    }
 
-err:
-	exit_critical_section();
+    THREAD_UNLOCK(state);
 
-	return ret;
-}
-
-/**
- * @brief  Same as event_wait_timeout(), but without a timeout.
- */
-status_t event_wait(event_t *e)
-{
-	return event_wait_timeout(e, INFINITE_TIME);
+    return ret;
 }
 
 /**
@@ -152,44 +110,45 @@ status_t event_wait(event_t *e)
  * all waiting threads are allowed to proceed until such time as
  * event_unsignal() is called.
  *
- * @param e	          Event object
+ * @param e           Event object
  * @param reschedule  If true, waiting thread(s) are executed immediately,
  *                    and the current thread resumes only after the
  *                    waiting threads have been satisfied. If false,
  *                    waiting threads are placed at the end of the run
  *                    queue.
  *
- * @return  Returns NO_ERROR on success.
+ * @return  Returns the number of threads woken up. Zero if no threads
+ *          were waiting or the event was already signaled. Negative values
+ *          indicate errors (though none currently possible).
  */
-status_t event_signal(event_t *e, bool reschedule)
-{
-	enter_critical_section();
+int event_signal(event_t *e, bool reschedule) {
+    int ret = 0;
+    DEBUG_ASSERT(e->magic == EVENT_MAGIC);
 
-#if EVENT_CHECK
-	ASSERT(e->magic == EVENT_MAGIC);
-#endif
+    THREAD_LOCK(state);
 
-	if (!e->signalled) {
-		if (e->flags & EVENT_FLAG_AUTOUNSIGNAL) {
-			/* try to release one thread and leave unsignalled if successful */
-			if (wait_queue_wake_one(&e->wait, reschedule, NO_ERROR) <= 0) {
-				/*
-				 * if we didn't actually find a thread to wake up, go to
-				 * signalled state and let the next call to event_wait
-				 * unsignal the event.
-				 */
-				e->signalled = true;
-			}
-		} else {
-			/* release all threads and remain signalled */
-			e->signalled = true;
-			wait_queue_wake_all(&e->wait, reschedule, NO_ERROR);
-		}
-	}
+    if (!e->signaled) {
+        if (e->flags & EVENT_FLAG_AUTOUNSIGNAL) {
+            /* try to release one thread and leave unsignaled if successful */
+            ret = wait_queue_wake_one(&e->wait, reschedule, NO_ERROR);
+            if (ret <= 0) {
+                /*
+                 * if we didn't actually find a thread to wake up, go to
+                 * signaled state and let the next call to event_wait
+                 * unsignal the event.
+                 */
+                e->signaled = true;
+            }
+        } else {
+            /* release all threads and remain signaled */
+            e->signaled = true;
+            ret = wait_queue_wake_all(&e->wait, reschedule, NO_ERROR);
+        }
+    }
 
-	exit_critical_section();
+    THREAD_UNLOCK(state);
 
-	return NO_ERROR;
+    return ret;
 }
 
 /**
@@ -204,18 +163,11 @@ status_t event_signal(event_t *e, bool reschedule)
  *
  * @return  Returns NO_ERROR on success.
  */
-status_t event_unsignal(event_t *e)
-{
-	enter_critical_section();
+status_t event_unsignal(event_t *e) {
+    DEBUG_ASSERT(e->magic == EVENT_MAGIC);
 
-#if EVENT_CHECK
-	ASSERT(e->magic == EVENT_MAGIC);
-#endif
+    e->signaled = false;
 
-	e->signalled = false;
-
-	exit_critical_section();
-
-	return NO_ERROR;
+    return NO_ERROR;
 }
 

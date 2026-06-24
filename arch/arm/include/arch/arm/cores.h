@@ -1,30 +1,15 @@
 /*
- * Copyright (c) 2008 Travis Geiselbrecht
+ * Copyright (c) 2008-2012 Travis Geiselbrecht
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files
- * (the "Software"), to deal in the Software without restriction,
- * including without limitation the rights to use, copy, modify, merge,
- * publish, distribute, sublicense, and/or sell copies of the Software,
- * and to permit persons to whom the Software is furnished to do so,
- * subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be
- * included in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
- * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
- * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
- * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * Use of this source code is governed by a MIT-style
+ * license that can be found in the LICENSE file or at
+ * https://opensource.org/licenses/MIT
  */
 #ifndef __ARM_CORES_H
 #define __ARM_CORES_H
 
-/* 
- * make the gcc built in define a little easier to deal with 
+/*
+ * make the gcc built in define a little easier to deal with
  * to decide what core it is generating code for
  *
  * ARM_ARCH_LEVEL gets assigned a numeric value of the general family
@@ -32,23 +17,53 @@
  * ARM_ARCH_* gets defined for each feature recursively
  */
 
-#if defined(__ARM_ARCH_7M__)
+/* echo | gcc -E -dM - to dump builtin defines */
+
+#if defined(__ARM_ARCH_8_1M_MAIN__)
+#define ARM_ARCH_8_1M_MAIN 1
+#endif
+#if defined(__ARM_ARCH_8M_MAIN__) || defined(ARM_ARCH_8_1M_MAIN)
+#define ARM_ARCH_8M_MAIN 1
+#endif
+#if defined(__ARM_ARCH_8M_BASE__)
+#define ARM_ARCH_8M_BASE 1
+#endif
+#if defined(ARM_ARCH_8M_MAIN) || defined(ARM_ARCH_8M_BASE)
+#define ARM_ARCH_8M 1
+#endif
+#if defined(__ARM_ARCH_8R__)
+#define ARM_ARCH_8R 1
+#endif
+#if defined(__ARM_ARCH_8A__) || defined(ARM_ARCH_8R)
+#define ARM_ARCH_8A 1
+#endif
+#if defined(__ARM_ARCH_8__) || defined(ARM_ARCH_8A) || defined(ARM_ARCH_8M)
+#define ARM_ARCH_8 1
+#ifndef ARM_ARCH_LEVEL
+#define ARM_ARCH_LEVEL 8
+#endif
+#endif
+
+#if defined(__ARM_ARCH_7EM__)
+#define ARM_ARCH_7EM 1
+#endif
+#if defined(__ARM_ARCH_7M__) || defined(ARM_ARCH_7EM) || defined(ARM_ARCH_8M_MAIN)
 #define ARM_ARCH_7M 1
 #endif
 #if defined(__ARM_ARCH_7R__)
 #define ARM_ARCH_7R 1
 #endif
-#if defined(__ARM_ARCH_7A__) || defined(ARM_ARCH_7R)
+#if defined(__ARM_ARCH_7A__) || defined(ARM_ARCH_7R) || defined(ARM_ARCH_8A)
 #define ARM_ARCH_7A 1
 #endif
-#if defined(__ARM_ARCH_7__) || defined(ARM_ARCH_7A) || defined(ARM_ARCH_7M)
+#if defined(__ARM_ARCH_7__) || defined(ARM_ARCH_7A) || defined(ARM_ARCH_7M) || defined(ARM_ARCH_8)
 #define ARM_ARCH_7 1
 #ifndef ARM_ARCH_LEVEL
 #define ARM_ARCH_LEVEL 7
 #endif
 #endif
 
-#if defined(__ARM_ARCH_6M__)
+#if defined(__ARM_ARCH_6M__) || defined(ARM_ARCH_8M_BASE)
 #define ARM_ARCH_6M 1
 #endif
 #if defined(__ARM_ARCH_6T2__) || defined(ARM_ARCH_7)

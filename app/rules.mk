@@ -1,12 +1,10 @@
 LOCAL_DIR := $(GET_LOCAL_DIR)
 
-MODULES += \
+MODULE := $(LOCAL_DIR)
 
-ifeq ($(DEVICE_TREE_SUPPORT), yes)
-MODULES += lib/libfdt
-MODULES += lib/libufdt
-endif
+MODULE_SRCS += \
+	$(LOCAL_DIR)/app.c
 
-OBJS += \
-	$(LOCAL_DIR)/app.o
+MODULE_OPTIONS := extra_warnings
 
+include make/module.mk

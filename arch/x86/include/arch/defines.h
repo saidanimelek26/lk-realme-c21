@@ -1,32 +1,29 @@
 /*
  * Copyright (c) 2009 Corey Tabaka
+ * Copyright (c) 2015 Intel Corporation
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files
- * (the "Software"), to deal in the Software without restriction,
- * including without limitation the rights to use, copy, modify, merge,
- * publish, distribute, sublicense, and/or sell copies of the Software,
- * and to permit persons to whom the Software is furnished to do so,
- * subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be
- * included in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
- * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
- * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
- * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * Use of this source code is governed by a MIT-style
+ * license that can be found in the LICENSE file or at
+ * https://opensource.org/licenses/MIT
  */
-#ifndef __ARCH_CPU_H
-#define __ARCH_CPU_H
+#pragma once
 
-#define PAGE_SIZE 4096
+#define PAGE_SIZE_SHIFT 12
+#define PAGE_SIZE       (1UL << PAGE_SIZE_SHIFT)
 
-// TODO: define to resolve to platform setup discovered value
-#define CACHE_LINE 32
+#define CACHE_LINE 64
 
+#define ARCH_DEFAULT_STACK_SIZE (PAGE_SIZE * 2)
+#define DEFAULT_TSS             PAGE_SIZE
+
+/* based on how start.S sets up the physmap */
+#if ARCH_X86_64
+#define PHYSMAP_SIZE (64ULL * 1024 * 1024 * 1024)
+#elif X86_LEGACY
+/* Only map the first 16MB on legacy x86 due to page table usage
+ * due to lack of 4MB pages. */
+#define PHYSMAP_SIZE (16ULL * 1024 * 1024)
+#elif ARCH_X86_32
+/* Map 1GB by default for x86-32 */
+#define PHYSMAP_SIZE (1ULL * 1024 * 1024 * 1024)
 #endif
-

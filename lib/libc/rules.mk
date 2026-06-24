@@ -1,21 +1,37 @@
 LOCAL_DIR := $(GET_LOCAL_DIR)
 
-OBJS += \
-	$(LOCAL_DIR)/atoi.o \
-	$(LOCAL_DIR)/ctype.o \
-	$(LOCAL_DIR)/printf.o \
-	$(LOCAL_DIR)/malloc.o \
-	$(LOCAL_DIR)/rand.o \
-	$(LOCAL_DIR)/eabi.o \
-	$(LOCAL_DIR)/strtoul.o
+MODULE := $(LOCAL_DIR)
 
+MODULE_DEPS := \
+	lib/heap \
+	lib/io
+
+MODULE_SRCS += \
+	$(LOCAL_DIR)/abort.c \
+	$(LOCAL_DIR)/atexit.c \
+	$(LOCAL_DIR)/atoi.c \
+	$(LOCAL_DIR)/bsearch.c \
+	$(LOCAL_DIR)/ctype.c \
+	$(LOCAL_DIR)/eabi.c \
+	$(LOCAL_DIR)/errno.c \
+	$(LOCAL_DIR)/printf.c \
+	$(LOCAL_DIR)/printf_helpers.c \
+	$(LOCAL_DIR)/qsort.c \
+	$(LOCAL_DIR)/rand.c \
+	$(LOCAL_DIR)/stdio.c \
+	$(LOCAL_DIR)/strtol.c \
+	$(LOCAL_DIR)/strtoll.c \
+
+MODULE_FLOAT_SRCS += \
+	$(LOCAL_DIR)/printf_float.c \
+	$(LOCAL_DIR)/atof.c \
+
+MODULE_COMPILEFLAGS += -fno-builtin
+
+MODULE_OPTIONS := extra_warnings
+
+MODULE_OPTIONS := test
 
 include $(LOCAL_DIR)/string/rules.mk
 
-ifeq ($(WITH_CPP_SUPPORT),true)
-OBJS += \
-	$(LOCAL_DIR)/new.o \
-	$(LOCAL_DIR)/atexit.o \
-	$(LOCAL_DIR)/pure_virtual.o
-endif
-
+include make/module.mk

@@ -1,102 +1,87 @@
-# comment out or override if you want to see the full output of each command
-NOECHO ?= @
+# Rules for generating the final binary and any auxillary files generated as a result.
 
-PICACHU_LIB := $(LK_TOP_DIR)/platform/$(PLATFORM)/lib/libpicachu.a
-
-ifeq ($(HOST_OS),darwin)
-MKIMAGE := ./scripts/mkimage.darwin
-else
-MKIMAGE := ./scripts/mkimage
+# use linker garbage collection, if requested
+WITH_LINKER_GC ?= false
+ifeq (true,$(call TOBOOL,$(WITH_LINKER_GC)))
+GLOBAL_COMPILEFLAGS += -ffunction-sections -fdata-sections
+GLOBAL_LDFLAGS += --gc-sections
+GLOBAL_DEFINES += LINKER_GC=1
 endif
+
+ifneq (,$(EXTRA_BUILDRULES))
+-include $(EXTRA_BUILDRULES)
+endif
+
+$(EXTRA_LINKER_SCRIPTS):
 
 $(OUTBIN): $(OUTELF)
-	@echo generating image: $@
+	$(info generating image: $@)
 	$(NOECHO)$(SIZE) $<
-	$(NOCOPY)$(OBJCOPY) -O binary $< $@
-	$(NOECHO)cp -f $@ $(BUILDDIR)/lk-no-mtk-header.bin
-	$(MKIMAGE) $@ img_hdr_lk.cfg > $(BUILDDIR)/lk_header.bin
-	$(NOECHO)mv $(BUILDDIR)/lk_header.bin $@
+	$(NOECHO)$(OBJCOPY) -O binary $< $@
 
-$(OUTELF)-dtb.img: $(OUTBIN)
-	@echo adding dtb: $@
-	$(NOECHO)cat $< $(LK_TOP_DIR)/main_dtb_header.bin > $@
+$(OUTELF).hex: $(OUTELF)
+	$(info generating hex file: $@)
+	$(NOECHO)$(OBJCOPY) -O ihex $< $@
 
-$(OUTELF)-sign.img: $(OUTELF)-dtb.img
-	@mv $(OUTBIN) $(OUTELF)-bin.img
-	@cp $< $(OUTBIN)
-	@echo signing image: $@
-	$(NOECHO)perl $(LK_TOP_DIR)/scripts/sign/SignTool.pl "$(PROJECT)" "$(PROJECT)" "$(LK_TOP_DIR)/certs" "yes" "2048" "true" "$(BUILDDIR)" "lk.img" "no"
-
-ifeq ($(ENABLE_TRUSTZONE), 1)
-$(OUTELF): $(ALLOBJS) $(LINKER_SCRIPT) $(OUTPUT_TZ_BIN)
-ifeq ($(BUILD_SEC_LIB),yes)
-	@echo delete old security library
-	@rm -rf $(LK_TOP_DIR)/app/mt_boot/lib/libcrypto.a
-	@rm -rf $(LK_TOP_DIR)/app/mt_boot/lib/libsec.a
-	@rm -rf $(LK_TOP_DIR)/app/mt_boot/lib/libsecplat.a
-	@echo linking security library
-	@ar cq $(LK_TOP_DIR)/app/mt_boot/lib/libcrypto.a $(CRYPTO_OBJS)
-	@ar cq $(LK_TOP_DIR)/app/mt_boot/lib/libsec.a $(SEC_OBJS)
-	@ar cq $(LK_TOP_DIR)/app/mt_boot/lib/libsecplat.a $(SEC_PLAT_OBJS)
-endif
-ifeq ($(BUILD_DEVINFO_LIB), yes)
-	@echo delete old security library
-	@rm -rf $(LK_TOP_DIR)/app/mt_boot/lib/libdevinfo.a
-	@echo linking security library
-	@ar cq $(LK_TOP_DIR)/app/mt_boot/lib/libdevinfo.a $(DEVINFO_OBJS)
-endif
-	@echo linking $@
-	$(NOECHO)$(LD) $(LDFLAGS) -T $(LINKER_SCRIPT) $(OUTPUT_TZ_BIN) $(ALLOBJS) $(LIBGCC) $(LIBSEC) $(LIBSEC_PLAT) $(wildcard $(PICACHU_LIB)) -o $@
-else
-$(OUTELF): $(ALLOBJS) $(LINKER_SCRIPT)
-ifeq ($(BUILD_SEC_LIB),yes)
-	@echo delete old security library
-	@rm -rf $(LK_TOP_DIR)/app/mt_boot/lib/libcrypto.a
-	@rm -rf $(LK_TOP_DIR)/app/mt_boot/lib/libsec.a
-	@rm -rf $(LK_TOP_DIR)/app/mt_boot/lib/libsecplat.a
-	@echo linking security library
-	@ar cq $(LK_TOP_DIR)/app/mt_boot/lib/libcrypto.a $(CRYPTO_OBJS)
-	@ar cq $(LK_TOP_DIR)/app/mt_boot/lib/libsec.a $(SEC_OBJS)
-	@ar cq $(LK_TOP_DIR)/app/mt_boot/lib/libsecplat.a $(SEC_PLAT_OBJS)
-endif
-
-ifeq ($(BUILD_DEVINFO_LIB), yes)
-	@echo delete old security library
-	@rm -rf $(LK_TOP_DIR)/app/mt_boot/lib/libdevinfo.a
-	@echo linking security library
-	@ar cq $(LK_TOP_DIR)/app/mt_boot/lib/libdevinfo.a $(DEVINFO_OBJS)
-endif
-
-ifeq ($(BUILD_HW_CRYPTO_LIB),yes)
-	@echo delete old hw crypto library
-	@rm -rf $(LK_TOP_DIR)/app/mt_boot/lib/libhw_crypto.a
-	@echo linking hw crypto library
-	@ar cq $(LK_TOP_DIR)/app/mt_boot/lib/libhw_crypto.a $(HW_CRYPTO_OBJS)
-endif
-	@echo linking $@
-	$(NOECHO)$(LD) $(LDFLAGS) -T $(LINKER_SCRIPT) $(ALLOBJS) $(LIBGCC) $(LIBSEC) $(LIBSEC_PLAT) $(LIBHW_CRYPTO) $(wildcard $(PICACHU_LIB)) -o $@
-endif
+$(OUTELF): $(ALLMODULE_OBJS) $(EXTRA_OBJS) $(LINKER_SCRIPT) $(EXTRA_LINKER_SCRIPTS)
+	$(info linking $@)
+	$(NOECHO)$(SIZE) -t --common $(sort $(ALLMODULE_OBJS)) $(EXTRA_OBJS)
+	$(NOECHO)$(LD) $(GLOBAL_LDFLAGS) $(ARCH_LDFLAGS) -d -T $(LINKER_SCRIPT) \
+		$(addprefix -T,$(EXTRA_LINKER_SCRIPTS)) \
+		$(ALLMODULE_OBJS) $(EXTRA_OBJS) $(LIBGCC) -Map=$(OUTELF).map -o $@
 
 $(OUTELF).sym: $(OUTELF)
-	@echo generating symbols: $@
+	$(info generating symbols: $@)
 	$(NOECHO)$(OBJDUMP) -t $< | $(CPPFILT) > $@
+	$(NOECHO)echo "# vim: ts=8 nolist nowrap" >> $@
+
+$(OUTELF).sym.sorted: $(OUTELF)
+	$(info generating sorted symbols: $@)
+	$(NOECHO)$(OBJDUMP) -t $< | $(CPPFILT) | sort > $@
+	$(NOECHO)echo "# vim: ts=8 nolist nowrap" >> $@
 
 $(OUTELF).lst: $(OUTELF)
-	@echo generating listing: $@
-	$(NOECHO)$(OBJDUMP) -Mreg-names-raw -d $< | $(CPPFILT) > $@
+	$(info generating listing: $@)
+	$(NOECHO)$(OBJDUMP) $(ARCH_OBJDUMP_FLAGS) -d $< | $(CPPFILT) > $@
+	$(NOECHO)echo "# vim: ts=8 nolist nowrap" >> $@
 
 $(OUTELF).debug.lst: $(OUTELF)
-	@echo generating listing: $@
-	$(NOECHO)$(OBJDUMP) -Mreg-names-raw -S $< | $(CPPFILT) > $@
+	$(info generating listing: $@)
+	$(NOECHO){ \
+		$(OBJDUMP) $(ARCH_OBJDUMP_FLAGS) -l -S $< 2>$@.err | $(CPPFILT) > $@; \
+		rc=$$?; \
+		sed '/: failed to find source/d' $@.err >&2; \
+		rm -f $@.err; \
+		exit $$rc; \
+	}
+	$(NOECHO)echo "# vim: ts=8 nolist nowrap" >> $@
+
+$(OUTELF).dump: $(OUTELF)
+	$(info generating objdump: $@)
+	$(NOECHO)$(OBJDUMP) -x $< | $(CPPFILT) > $@
+	$(NOECHO)echo "# vim: ts=8 nolist nowrap" >> $@
 
 $(OUTELF).size: $(OUTELF)
-	@echo generating size map: $@
-	$(NOECHO)$(NM) -S --size-sort $< > $@
+	$(info generating size map: $@)
+	$(NOECHO)$(NM) -S --size-sort $< | $(CPPFILT) > $@
+	$(NOECHO)echo "# vim: ts=8 nolist nowrap" >> $@
 
-ifeq ($(ENABLE_TRUSTZONE), 1)
-$(OUTPUT_TZ_BIN): $(INPUT_TZ_BIN)
-	@echo generating TZ output from TZ input
-	$(NOECHO)$(OBJCOPY) -I binary -B arm -O elf32-littlearm $(INPUT_TZ_BIN) $(OUTPUT_TZ_BIN)
-endif
+# generate a list of source files that potentially participate in this build.
+# header file detection is a bit sloppy: it simply searches for every .h file inside
+# the combined include paths. May pick up files that are not strictly speaking used.
+# Alternate strategy that may work: union all of the .d files together and collect all
+# of the used headers used there.
+$(BUILDDIR)/srcfiles.txt: $(OUTELF) $(BUILDDIR)/include_paths.txt
+	@$(MKDIR)
+	$(info generating $@)
+	$(NOECHO)echo $(sort $(ALLSRCS)) | tr ' ' '\n' > $@
+	@for i in `cat $(BUILDDIR)/include_paths.txt`; do if [ -d $$i ]; then find $$i -type f -name \*.h; fi; done >> $@
 
-include arch/$(ARCH)/compile.mk
+# generate a list of all the include directories used in this project
+$(BUILDDIR)/include_paths.txt: $(OUTELF)
+	@$(MKDIR)
+	$(info generating $@)
+	$(NOECHO)echo $(subst -I,,$(sort $(GLOBAL_INCLUDES))) | tr ' ' '\n' > $@
+
+#include arch/$(ARCH)/compile.mk
+

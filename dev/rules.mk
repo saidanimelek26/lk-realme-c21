@@ -1,12 +1,9 @@
 LOCAL_DIR := $(GET_LOCAL_DIR)
 
-MODULES += \
-	$(LOCAL_DIR)/video \
-	$(LOCAL_DIR)/lcm \
-	$(LOCAL_DIR)/gic \
-	$(LOCAL_DIR)/md_com
+MODULE := $(LOCAL_DIR)
 
+MODULE_SRCS += $(LOCAL_DIR)/dev.c
 
-OBJS += \
-	$(LOCAL_DIR)/dev.o
+MODULE_OPTIONS := extra_warnings
 
+include make/module.mk

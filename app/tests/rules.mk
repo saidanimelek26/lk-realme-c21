@@ -1,8 +1,25 @@
 LOCAL_DIR := $(GET_LOCAL_DIR)
 
-INCLUDES += -I$(LOCAL_DIR)/include
+MODULE := $(LOCAL_DIR)
 
-OBJS += \
-	$(LOCAL_DIR)/tests.o \
-	$(LOCAL_DIR)/thread_tests.o \
-	$(LOCAL_DIR)/printf_tests.o
+MODULE_SRCS := \
+    $(LOCAL_DIR)/cache_tests.c \
+    $(LOCAL_DIR)/clock_tests.c \
+    $(LOCAL_DIR)/fibo.c \
+    $(LOCAL_DIR)/mem_tests.c \
+    $(LOCAL_DIR)/port_tests.c \
+    $(LOCAL_DIR)/tests.c \
+    $(LOCAL_DIR)/thread_tests.c \
+
+MODULE_FLOAT_SRCS := \
+    $(LOCAL_DIR)/benchmarks.c \
+    $(LOCAL_DIR)/float.c \
+    $(LOCAL_DIR)/float_instructions.S \
+
+MODULE_DEPS += \
+    lib/cbuf \
+    lib/libm
+
+MODULE_COMPILEFLAGS += -fno-builtin
+
+include make/module.mk

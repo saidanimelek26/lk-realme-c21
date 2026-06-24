@@ -1,24 +1,9 @@
 /*
  * Copyright (c) 2008-2010 Travis Geiselbrecht
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files
- * (the "Software"), to deal in the Software without restriction,
- * including without limitation the rights to use, copy, modify, merge,
- * publish, distribute, sublicense, and/or sell copies of the Software,
- * and to permit persons to whom the Software is furnished to do so,
- * subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be
- * included in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
- * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
- * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
- * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * Use of this source code is governed by a MIT-style
+ * license that can be found in the LICENSE file or at
+ * https://opensource.org/licenses/MIT
  */
 
 /**
@@ -31,9 +16,9 @@
  * @ingroup graphics
  */
 
-#include <debug.h>
-#include <lib/gfx.h>
 #include <lib/font.h>
+#include <lib/gfx.h>
+#include <lk/debug.h>
 
 #include "font.h"
 
@@ -42,21 +27,48 @@
  *
  * @ingroup graphics
  */
-void font_draw_char(gfx_surface *surface, unsigned char c, int x, int y, uint32_t color)
-{
-	uint i,j;
-	uint line;
+void font_draw_char(gfx_surface *surface, unsigned char c, int x, int y, uint32_t color) {
+    uint i, j;
+    uint line;
 
-	// draw this char into a buffer
-	for (i = 0; i < FONT_Y; i++) {
-		line = FONT[c * FONT_Y + i];
-		for (j = 0; j < FONT_X; j++) {
-			if (line & 0x1)
-				gfx_putpixel(surface, x + j, y + i, color);
-			line = line >> 1;
-		}
-	}
-	gfx_flush_rows(surface, y, y + FONT_Y);
+    // 1bpp batched per-byte, for performance boost
+    if (surface->format == GFX_FORMAT_MONO_1 && surface->spanmono1) {
+        uint32_t c1 = surface->translate_color ? surface->translate_color(color) : color;
+        gfx_span_op op = (c1 != 0) ? GFX_SPAN_SET : GFX_SPAN_CLR;
+
+        for (i = 0; i < FONT_Y; i++) {
+            line = FONT[(c * FONT_Y) + i];
+
+            for (j = 0; j < FONT_X;) {
+                if ((line & 0x1) == 0) {
+                    line >>= 1;
+                    j++;
+                    continue;
+                }
+
+                uint start = j;
+                do {
+                    line >>= 1;
+                    j++;
+                } while (j < FONT_X && (line & 0x1));
+
+                surface->spanmono1(surface, (x + start), (y + i), (j - start), op);
+            }
+        }
+
+        gfx_flush_rows(surface, y, (y + FONT_Y));
+        return;
+    }
+
+    // Per-pixel default
+    for (i = 0; i < FONT_Y; i++) {
+        line = FONT[(c * FONT_Y) + i];
+        for (j = 0; j < FONT_X; j++) {
+            if (line & 0x1) {
+                gfx_putpixel(surface, (x + j), (y + i), color);
+            }
+            line = line >> 1;
+        }
+    }
+    gfx_flush_rows(surface, y, (y + FONT_Y));
 }
-
-
