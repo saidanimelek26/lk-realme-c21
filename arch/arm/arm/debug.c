@@ -5,6 +5,9 @@
  * license that can be found in the LICENSE file or at
  * https://opensource.org/licenses/MIT
  */
+#include <stdint.h>
+#include <stddef.h>
+#include <sys/types.h>
 #include <lk/trace.h>
 #include <lk/err.h>
 #include <malloc.h>
@@ -16,6 +19,18 @@
 #include <platform.h>
 #include <lk/console_cmd.h>
 #include <string.h>
+#include <debug.h>
+#include <kernel/time.h>
+
+/* Define lk_time_t if not already defined */
+#ifndef lk_time_t
+typedef uint32_t lk_time_t;
+#endif
+
+/* Define UINT16_MAX if not already defined */
+#ifndef UINT16_MAX
+#define UINT16_MAX 65535
+#endif
 
 struct dcc_state {
     dcc_rx_callback_t rx_callback;
@@ -41,7 +56,9 @@ static int dcc_worker_entry(void *arg) {
         if (arm_dcc_read_available()) {
             uint32_t val = arm_read_dbgdtrrxint();
 
-            dcc->rx_callback(val);
+            if (dcc->rx_callback) {
+                dcc->rx_callback(val);
+            }
 
             // we just received something, so go to a faster poll rate
             fast_poll = true;
@@ -66,7 +83,12 @@ status_t arm_dcc_enable(dcc_rx_callback_t rx_callback) {
     mutex_init(&state->lock);
 
     state->worker = thread_create("dcc worker", dcc_worker_entry, state, DEFAULT_PRIORITY, DEFAULT_STACK_SIZE);
-    thread_resume(state->worker);
+    if (state->worker) {
+        thread_resume(state->worker);
+    } else {
+        free(state);
+        return ERR_NO_MEMORY;
+    }
 
     return NO_ERROR;
 }
@@ -164,10 +186,10 @@ static int cmd_dcc(int argc, const console_cmd_args *argv) {
     } else if (!strcmp(argv[1].str, "read")) {
         uint32_t buf[128];
 
-        ssize_t len = arm_dcc_read(buf, sizeof(buf), 1000);
+        ssize_t len = arm_dcc_read(buf, sizeof(buf)/sizeof(uint32_t), 1000);
         printf("arm_dcc_read returns %ld\n", len);
         if (len > 0) {
-            hexdump(buf, len);
+            hexdump(buf, len * sizeof(uint32_t));
         }
     } else {
         printf("unknown args\n");
@@ -181,4 +203,3 @@ STATIC_COMMAND_START
 STATIC_COMMAND("dcc", "dcc stuff", &cmd_dcc)
 #endif
 STATIC_COMMAND_END(dcc);
-
