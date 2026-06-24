@@ -275,6 +275,7 @@ GLOBAL_INCLUDES += \
 	$(LOCAL_DIR)/$(SUBARCH)/include
 
 ifeq ($(SUBARCH),arm)
+# Use MODULE_SRCS instead of direct OBJS
 MODULE_SRCS += \
 	$(LOCAL_DIR)/arm/start.S \
 	$(LOCAL_DIR)/arm/asm.S \
@@ -284,11 +285,49 @@ MODULE_SRCS += \
 	$(LOCAL_DIR)/arm/ops.S \
 	$(LOCAL_DIR)/arm/faults.c \
 	$(LOCAL_DIR)/arm/mmu.c \
-	$(LOCAL_DIR)/arm/thread.c
+	$(LOCAL_DIR)/arm/thread.c \
+	$(LOCAL_DIR)/arm/init.c \
+	$(LOCAL_DIR)/arm/cust_display.c \
+	$(LOCAL_DIR)/arm/cust_leds.c \
+	$(LOCAL_DIR)/arm/power_off.c \
+	$(LOCAL_DIR)/arm/fastboot_oem_commands.c \
+	$(LOCAL_DIR)/arm/mt_gpt.c \
+	$(LOCAL_DIR)/arm/mt_latch.c \
+	$(LOCAL_DIR)/arm/msdc_io.c \
+	$(LOCAL_DIR)/arm/cust_msdc.c \
+	$(LOCAL_DIR)/arm/mt_pmic_dlpt.c \
+	$(LOCAL_DIR)/arm/sec_efuse.c \
+	$(LOCAL_DIR)/arm/sec_policy.c \
+	$(LOCAL_DIR)/arm/aee_platform_debug.c \
+	$(LOCAL_DIR)/arm/mt_dramc_memtest.c \
+	$(LOCAL_DIR)/arm/pll.c \
+	$(LOCAL_DIR)/arm/spm_md_mtcmos.c \
+	$(LOCAL_DIR)/arm/md1_off.c \
+	$(LOCAL_DIR)/arm/mtk_dcm.c \
+	$(LOCAL_DIR)/arm/mtk_dcm_autogen.c \
+	$(LOCAL_DIR)/arm/mtk_mcdi.c \
+	$(LOCAL_DIR)/arm/crypto_hw.c \
+	$(LOCAL_DIR)/arm/oaep.c \
+	$(LOCAL_DIR)/arm/rsa_oaep.c \
+	$(LOCAL_DIR)/arm/anti_rollback_cust.c \
+	$(LOCAL_DIR)/arm/write_protect.c \
+	$(LOCAL_DIR)/arm/mtk_smi.c \
+	$(LOCAL_DIR)/arm/mt_scp.c \
+	$(LOCAL_DIR)/arm/mt_scp_l1c.c \
+	$(LOCAL_DIR)/arm/mt_scp_excep.c \
+	$(LOCAL_DIR)/arm/mt_sspm.c \
+	$(LOCAL_DIR)/arm/ccci_lk_load_img_plat.c \
+	$(LOCAL_DIR)/arm/custom_dtb_index.c \
+	$(LOCAL_DIR)/arm/avb_crypto_hw.c
+
+# Add mt_musb from platform/common if it exists
+ifneq ($(wildcard $(LK_TOP_DIR)/platform/common/mt_musb/mt_musbphy.c),)
+MODULE_SRCS += $(LK_TOP_DIR)/platform/common/mt_musb/mt_musbphy.c
+endif
 
 MODULE_FLOAT_SRCS += \
 	$(LOCAL_DIR)/arm/exceptions.S \
-	$(LOCAL_DIR)/arm/fpu.c \
+	$(LOCAL_DIR)/arm/fpu.c
 
 MODULE_ARM_OVERRIDE_SRCS := \
 	$(LOCAL_DIR)/arm/arch.c
