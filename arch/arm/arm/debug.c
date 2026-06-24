@@ -8,28 +8,22 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <sys/types.h>
-#include <lk/trace.h>
-#include <lk/err.h>
+#include <stdbool.h>
+#include <string.h>
+#include <debug.h>
 #include <malloc.h>
-#include <lk/init.h>
-#include <arch/arm.h>
-#include <arch/arm/dcc.h>
 #include <kernel/thread.h>
 #include <kernel/mutex.h>
 #include <platform.h>
 #include <lk/console_cmd.h>
-#include <string.h>
-#include <debug.h>
-#include <kernel/time.h>
+#include <lk/err.h>
+#include <lk/trace.h>
+#include <arch/arm.h>
+#include <arch/arm/dcc.h>
 
 /* Define lk_time_t if not already defined */
 #ifndef lk_time_t
 typedef uint32_t lk_time_t;
-#endif
-
-/* Define UINT16_MAX if not already defined */
-#ifndef UINT16_MAX
-#define UINT16_MAX 65535
 #endif
 
 struct dcc_state {
@@ -48,7 +42,6 @@ static int dcc_worker_entry(void *arg) {
 
     fast_poll = false;
     for (;;) {
-        // wait for a bit if we're in slow poll mode
         if (!fast_poll) {
             thread_sleep(SLOW_POLL_RATE);
         }
@@ -60,17 +53,14 @@ static int dcc_worker_entry(void *arg) {
                 dcc->rx_callback(val);
             }
 
-            // we just received something, so go to a faster poll rate
             fast_poll = true;
             fast_poll_start = current_time();
         } else {
-            // didn't see anything
             if (fast_poll && current_time() - fast_poll_start >= FAST_POLL_TIMEOUT) {
-                fast_poll = false; // go back to slow poll
+                fast_poll = false;
             }
         }
     }
-
     return 0;
 }
 
@@ -82,7 +72,8 @@ status_t arm_dcc_enable(dcc_rx_callback_t rx_callback) {
     state->rx_callback = rx_callback;
     mutex_init(&state->lock);
 
-    state->worker = thread_create("dcc worker", dcc_worker_entry, state, DEFAULT_PRIORITY, DEFAULT_STACK_SIZE);
+    state->worker = thread_create("dcc worker", dcc_worker_entry, state, 
+                                   DEFAULT_PRIORITY, DEFAULT_STACK_SIZE);
     if (state->worker) {
         thread_resume(state->worker);
     } else {
@@ -95,27 +86,20 @@ status_t arm_dcc_enable(dcc_rx_callback_t rx_callback) {
 
 bool arm_dcc_read_available(void) {
     uint32_t dscr = arm_read_dbgdscr();
-    if (dscr & (1<<30)) { // rx full
-        return true;
-    } else {
-        return false;
-    }
+    return (dscr & (1 << 30)) ? true : false;
 }
 
 ssize_t arm_dcc_read(uint32_t *buf, size_t len, lk_time_t timeout) {
     lk_time_t start = 0;
-
     if (timeout != 0)
         start = current_time();
 
     ssize_t count = 0;
     while (count < (ssize_t)len) {
-
         uint32_t dscr = arm_read_dbgdscr();
-        if (dscr & (1<<30)) { // rx full
+        if (dscr & (1 << 30)) {
             uint32_t val = arm_read_dbgdtrrxint();
             *buf++ = val;
-
             count++;
         } else {
             if (timeout == 0 || current_time() - start >= timeout) {
@@ -123,21 +107,18 @@ ssize_t arm_dcc_read(uint32_t *buf, size_t len, lk_time_t timeout) {
             }
         }
     }
-
     return count;
 }
 
 ssize_t arm_dcc_write(const uint32_t *buf, size_t len, lk_time_t timeout) {
     lk_time_t start = 0;
-
     if (timeout != 0)
         start = current_time();
 
     ssize_t count = 0;
     while (count < (ssize_t)len) {
-
         uint32_t dscr = arm_read_dbgdscr();
-        if ((dscr & (1<<29)) == 0) { // tx empty
+        if ((dscr & (1 << 29)) == 0) {
             arm_write_dbgdtrrxint(*buf);
             count++;
             buf++;
@@ -147,7 +128,6 @@ ssize_t arm_dcc_write(const uint32_t *buf, size_t len, lk_time_t timeout) {
             }
         }
     }
-
     return count;
 }
 
@@ -169,7 +149,6 @@ static int cmd_dcc(int argc, const console_cmd_args *argv) {
     if (!strcmp(argv[1].str, "start")) {
         if (!dcc_started) {
             printf("starting dcc\n");
-
             status_t err = arm_dcc_enable(&dcc_rx_callback);
             printf("arm_dcc_enable returns %d\n", err);
             dcc_started = true;
@@ -178,15 +157,14 @@ static int cmd_dcc(int argc, const console_cmd_args *argv) {
         for (int i = 2; i < argc; i++) {
             uint32_t buf[128];
             size_t len = strlen(argv[i].str);
-            for (uint j = 0; j < len; j++) {
+            for (size_t j = 0; j < len; j++) {
                 buf[j] = argv[i].str[j];
             }
-            arm_dcc_write(buf, strlen(argv[i].str), 1000);
+            arm_dcc_write(buf, len, 1000);
         }
     } else if (!strcmp(argv[1].str, "read")) {
         uint32_t buf[128];
-
-        ssize_t len = arm_dcc_read(buf, sizeof(buf)/sizeof(uint32_t), 1000);
+        ssize_t len = arm_dcc_read(buf, sizeof(buf) / sizeof(uint32_t), 1000);
         printf("arm_dcc_read returns %ld\n", len);
         if (len > 0) {
             hexdump(buf, len * sizeof(uint32_t));
