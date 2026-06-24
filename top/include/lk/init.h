@@ -1,139 +1,201 @@
 /*
- * Copyright (c) 2013-2015 Travis Geiselbrecht
+ * Copyright (c) 2015 Travis Geiselbrecht
  *
  * Use of this source code is governed by a MIT-style
  * license that can be found in the LICENSE file or at
  * https://opensource.org/licenses/MIT
  */
-#pragma once
-
-#include <lk/compiler.h>
+#include <stdint.h>
+#include <stddef.h>
 #include <sys/types.h>
+#include <lk/trace.h>
+#include <lk/err.h>
+#include <malloc.h>
+#include <lk/init.h>
+#include <arch/arm.h>
+#include <arch/arm/dcc.h>
+#include <kernel/thread.h>
+#include <kernel/mutex.h>
+#include <platform.h>
+#include <lk/console_cmd.h>
+#include <string.h>
+#include <debug.h>
+#include <kernel/time.h>
+#include <arch/arm/arm.h>
 
-__BEGIN_CDECLS
+/* Define lk_time_t if not already defined */
+#ifndef lk_time_t
+typedef uint32_t lk_time_t;
+#endif
 
-/*
- * LK's init system
- */
-
-typedef void (*lk_init_hook)(uint level);
-
-enum lk_init_level {
-    LK_INIT_LEVEL_EARLIEST = 1,
-
-    LK_INIT_LEVEL_ARCH_EARLY     = 0x1000,
-    LK_INIT_LEVEL_PLATFORM_EARLY = 0x2000,
-    LK_INIT_LEVEL_TARGET_EARLY   = 0x3000,
-    LK_INIT_LEVEL_HEAP           = 0x4000,
-    LK_INIT_LEVEL_VM             = 0x5000,
-    LK_INIT_LEVEL_KERNEL         = 0x6000,
-    LK_INIT_LEVEL_THREADING      = 0x7000,
-    LK_INIT_LEVEL_ARCH           = 0x8000,
-    LK_INIT_LEVEL_PLATFORM       = 0x9000,
-    LK_INIT_LEVEL_TARGET         = 0xa000,
-    LK_INIT_LEVEL_APPS           = 0xb000,
-
-    LK_INIT_LEVEL_LAST = UINT16_MAX,
+struct dcc_state {
+    dcc_rx_callback_t rx_callback;
+    mutex_t  lock;
+    thread_t *worker;
 };
 
-/**
- * enum lk_init_flags - Flags specifying init hook type.
- *
- * Flags passed to LK_INIT_HOOK_FLAGS to specify when the hook should be called.
- */
-enum lk_init_flags {
-    /**
-     * @LK_INIT_FLAG_PRIMARY_CPU: Call init hook when booting primary CPU.
-     */
-    LK_INIT_FLAG_PRIMARY_CPU     = 0x1,
+#define SLOW_POLL_RATE 100
+#define FAST_POLL_TIMEOUT 5
 
-    /**
-     * @LK_INIT_FLAG_SECONDARY_CPUS: Call init hook when booting secondary CPUs.
-     */
-    LK_INIT_FLAG_SECONDARY_CPUS  = 0x2,
+static int dcc_worker_entry(void *arg) {
+    struct dcc_state *dcc = (struct dcc_state *)arg;
+    lk_time_t fast_poll_start;
+    bool fast_poll;
 
-    /**
-     * @LK_INIT_FLAG_ALL_CPUS: Call init hook when booting any CPU.
-     */
-    LK_INIT_FLAG_ALL_CPUS        = LK_INIT_FLAG_PRIMARY_CPU | LK_INIT_FLAG_SECONDARY_CPUS,
+    fast_poll = false;
+    for (;;) {
+        // wait for a bit if we're in slow poll mode
+        if (!fast_poll) {
+            thread_sleep(SLOW_POLL_RATE);
+        }
 
-    /**
-     * @LK_INIT_FLAG_CPU_ENTER_IDLE: Call init hook before a CPU enters idle.
-     *
-     * The CPU may lose state after this, but it should respond to interrupts.
-     */
-    LK_INIT_FLAG_CPU_ENTER_IDLE  = 0x4,
+        if (arm_dcc_read_available()) {
+            uint32_t val = arm_read_dbgdtrrxint();
 
-    /**
-     * @LK_INIT_FLAG_CPU_OFF: Call init hook before a CPU goes offline.
-     *
-     * The CPU may lose state after this, and it should not respond to
-     * interrupts.
-     */
-    LK_INIT_FLAG_CPU_OFF         = 0x8,
+            if (dcc->rx_callback) {
+                dcc->rx_callback(val);
+            }
 
-    /**
-     * @LK_INIT_FLAG_CPU_SUSPEND: Call init hook before a CPU loses state.
-     *
-     * Alias to call hook for both LK_INIT_FLAG_CPU_ENTER_IDLE and
-     * LK_INIT_FLAG_CPU_OFF events.
-     */
-    LK_INIT_FLAG_CPU_SUSPEND     = LK_INIT_FLAG_CPU_ENTER_IDLE | LK_INIT_FLAG_CPU_OFF,
+            // we just received something, so go to a faster poll rate
+            fast_poll = true;
+            fast_poll_start = current_time();
+        } else {
+            // didn't see anything
+            if (fast_poll && current_time() - fast_poll_start >= FAST_POLL_TIMEOUT) {
+                fast_poll = false; // go back to slow poll
+            }
+        }
+    }
 
-    /**
-     * @LK_INIT_FLAG_CPU_EXIT_IDLE: Call init hook after a CPU exits idle.
-     *
-     * LK_INIT_FLAG_CPU_ENTER_IDLE should have been called before this.
-     */
-    LK_INIT_FLAG_CPU_EXIT_IDLE   = 0x10,
-
-    /**
-     * @LK_INIT_FLAG_CPU_ON: Call init hook after a CPU turns on.
-     *
-     * LK_INIT_FLAG_CPU_OFF should have been called before this. The first time
-     * a CPU turns on LK_INIT_FLAG_PRIMARY_CPU or LK_INIT_FLAG_SECONDARY_CPUS
-     * is called instead of this.
-     */
-    LK_INIT_FLAG_CPU_ON          = 0x20,
-
-    /**
-     * @LK_INIT_FLAG_CPU_RESUME: Call init hook after a CPU exits idle.
-     *
-     * Alias to call hook for both LK_INIT_FLAG_CPU_EXIT_IDLE and
-     * LK_INIT_FLAG_CPU_ON events.
-     */
-    LK_INIT_FLAG_CPU_RESUME      = LK_INIT_FLAG_CPU_EXIT_IDLE | LK_INIT_FLAG_CPU_ON,
-};
-
-// Run init hooks between start_level and stop_level (both inclusive) that match the required_flags.
-void lk_init_level(enum lk_init_flags required_flags, uint16_t start_level, uint16_t stop_level);
-
-static inline void lk_primary_cpu_init_level(uint16_t start_level, uint16_t stop_level) {
-    lk_init_level(LK_INIT_FLAG_PRIMARY_CPU, start_level, stop_level);
+    return 0;
 }
 
-static inline void lk_init_level_all(enum lk_init_flags flags) {
-    lk_init_level(flags, LK_INIT_LEVEL_EARLIEST, LK_INIT_LEVEL_LAST);
+status_t arm_dcc_enable(dcc_rx_callback_t rx_callback) {
+    struct dcc_state *state = malloc(sizeof(struct dcc_state));
+    if (!state)
+        return ERR_NO_MEMORY;
+
+    state->rx_callback = rx_callback;
+    mutex_init(&state->lock);
+
+    state->worker = thread_create("dcc worker", dcc_worker_entry, state, DEFAULT_PRIORITY, DEFAULT_STACK_SIZE);
+    if (state->worker) {
+        thread_resume(state->worker);
+    } else {
+        free(state);
+        return ERR_NO_MEMORY;
+    }
+
+    return NO_ERROR;
 }
 
-struct lk_init_struct {
-    uint16_t level;
-    uint16_t flags;
-    lk_init_hook hook;
-    const char *name;
-};
+bool arm_dcc_read_available(void) {
+    uint32_t dscr = arm_read_dbgdscr();
+    if (dscr & (1<<30)) { // rx full
+        return true;
+    } else {
+        return false;
+    }
+}
 
-// Define an init hook with specific flags, level, and name.
-#define LK_INIT_HOOK_FLAGS(_name, _hook, _level, _flags) \
-    static const struct lk_init_struct _init_struct_##_name __ALIGNED(sizeof(void *)) __SECTION("lk_init") = { \
-        .level = (_level), \
-        .flags = (_flags), \
-        .hook = (_hook), \
-        .name = #_name, \
-    };
+ssize_t arm_dcc_read(uint32_t *buf, size_t len, lk_time_t timeout) {
+    lk_time_t start = 0;
 
-// Shortcut for defining an init hook with primary CPU flag.
-#define LK_INIT_HOOK(_name, _hook, _level) \
-    LK_INIT_HOOK_FLAGS(_name, _hook, _level, LK_INIT_FLAG_PRIMARY_CPU)
+    if (timeout != 0)
+        start = current_time();
 
-__END_CDECLS
+    ssize_t count = 0;
+    while (count < (ssize_t)len) {
+
+        uint32_t dscr = arm_read_dbgdscr();
+        if (dscr & (1<<30)) { // rx full
+            uint32_t val = arm_read_dbgdtrrxint();
+            *buf++ = val;
+
+            count++;
+        } else {
+            if (timeout == 0 || current_time() - start >= timeout) {
+                break;
+            }
+        }
+    }
+
+    return count;
+}
+
+ssize_t arm_dcc_write(const uint32_t *buf, size_t len, lk_time_t timeout) {
+    lk_time_t start = 0;
+
+    if (timeout != 0)
+        start = current_time();
+
+    ssize_t count = 0;
+    while (count < (ssize_t)len) {
+
+        uint32_t dscr = arm_read_dbgdscr();
+        if ((dscr & (1<<29)) == 0) { // tx empty
+            arm_write_dbgdtrrxint(*buf);
+            count++;
+            buf++;
+        } else {
+            if (timeout == 0 || current_time() - start >= timeout) {
+                break;
+            }
+        }
+    }
+
+    return count;
+}
+
+static void dcc_rx_callback(uint32_t val) {
+    static int count = 0;
+    count += 4;
+    if ((count % 1000) == 0)
+        printf("count %d\n", count);
+}
+
+static int cmd_dcc(int argc, const console_cmd_args *argv) {
+    static bool dcc_started = false;
+
+    if (argc < 2) {
+        printf("not enough args\n");
+        return -1;
+    }
+
+    if (!strcmp(argv[1].str, "start")) {
+        if (!dcc_started) {
+            printf("starting dcc\n");
+
+            status_t err = arm_dcc_enable(&dcc_rx_callback);
+            printf("arm_dcc_enable returns %d\n", err);
+            dcc_started = true;
+        }
+    } else if (!strcmp(argv[1].str, "write")) {
+        for (int i = 2; i < argc; i++) {
+            uint32_t buf[128];
+            size_t len = strlen(argv[i].str);
+            for (uint j = 0; j < len; j++) {
+                buf[j] = argv[i].str[j];
+            }
+            arm_dcc_write(buf, strlen(argv[i].str), 1000);
+        }
+    } else if (!strcmp(argv[1].str, "read")) {
+        uint32_t buf[128];
+
+        ssize_t len = arm_dcc_read(buf, sizeof(buf)/sizeof(uint32_t), 1000);
+        printf("arm_dcc_read returns %ld\n", len);
+        if (len > 0) {
+            hexdump(buf, len * sizeof(uint32_t));
+        }
+    } else {
+        printf("unknown args\n");
+    }
+
+    return 0;
+}
+
+STATIC_COMMAND_START
+#if LK_DEBUGLEVEL > 1
+STATIC_COMMAND("dcc", "dcc stuff", &cmd_dcc)
+#endif
+STATIC_COMMAND_END(dcc);
