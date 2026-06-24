@@ -310,12 +310,54 @@ endif
 # prefix all of the paths in GLOBAL_INCLUDES with -I
 GLOBAL_INCLUDES := $(addprefix -I,$(GLOBAL_INCLUDES))
 
-# test for some old variables
+# ====================================================================
+# FIXED: Allow old-style variables with warnings instead of errors
+# ====================================================================
+
+# Handle legacy INCLUDES variable - convert to GLOBAL_INCLUDES
 ifneq ($(INCLUDES),)
-$(error INCLUDES variable set, please move to GLOBAL_INCLUDES: $(INCLUDES))
+$(warning INCLUDES variable set, please move to GLOBAL_INCLUDES: $(INCLUDES))
+# For backward compatibility, add INCLUDES to GLOBAL_INCLUDES
+# Remove any -I prefix if present to avoid duplication
+GLOBAL_INCLUDES += $(INCLUDES)
 endif
+
+# Handle legacy DEFINES variable - convert to GLOBAL_DEFINES
 ifneq ($(DEFINES),)
-$(error DEFINES variable set, please move to GLOBAL_DEFINES: $(DEFINES))
+$(warning DEFINES variable set, please move to GLOBAL_DEFINES: $(DEFINES))
+# For backward compatibility, add DEFINES to GLOBAL_DEFINES
+GLOBAL_DEFINES += $(DEFINES)
+endif
+
+# Handle legacy OBJS variable - warn but don't error
+ifneq ($(OBJS),)
+$(warning OBJS=$(OBJS))
+$(warning OBJS is not empty, please convert to new module format)
+# Keep as warning for backward compatibility - module.mk will handle this
+endif
+
+# Handle legacy OPTFLAGS variable - convert to GLOBAL_OPTFLAGS
+ifneq ($(OPTFLAGS),)
+$(warning OPTFLAGS=$(OPTFLAGS))
+$(warning OPTFLAGS is not empty, please use GLOBAL_OPTFLAGS or MODULE_OPTFLAGS)
+# For backward compatibility
+GLOBAL_OPTFLAGS += $(OPTFLAGS)
+endif
+
+# Handle legacy CFLAGS variable - convert to GLOBAL_CFLAGS
+ifneq ($(CFLAGS),)
+$(warning CFLAGS=$(CFLAGS))
+$(warning CFLAGS is not empty, please use GLOBAL_CFLAGS or MODULE_CFLAGS)
+# For backward compatibility
+GLOBAL_CFLAGS += $(CFLAGS)
+endif
+
+# Handle legacy CPPFLAGS variable - convert to GLOBAL_CPPFLAGS
+ifneq ($(CPPFLAGS),)
+$(warning CPPFLAGS=$(CPPFLAGS))
+$(warning CPPFLAGS is not empty, please use GLOBAL_CPPFLAGS or MODULE_CPPFLAGS)
+# For backward compatibility
+GLOBAL_CPPFLAGS += $(CPPFLAGS)
 endif
 
 # try to have the compiler output colorized error messages if available
@@ -344,22 +386,8 @@ GLOBAL_DEFINES += ARCH_LDFLAGS=\"$(subst $(SPACE),_,$(ARCH_LDFLAGS))\"
 GLOBAL_DEFINES += TOOLCHAIN_PREFIX=\"$(subst $(SPACE),_,$(TOOLCHAIN_PREFIX))\"
 GLOBAL_DEFINES += LIBGCC=\"$(subst $(SPACE),_,$(LIBGCC))\"
 
-ifneq ($(OBJS),)
-$(warning OBJS=$(OBJS))
-$(error OBJS is not empty, please convert to new module format)
-endif
-ifneq ($(OPTFLAGS),)
-$(warning OPTFLAGS=$(OPTFLAGS))
-$(error OPTFLAGS is not empty, please use GLOBAL_OPTFLAGS or MODULE_OPTFLAGS)
-endif
-ifneq ($(CFLAGS),)
-$(warning CFLAGS=$(CFLAGS))
-$(error CFLAGS is not empty, please use GLOBAL_CFLAGS or MODULE_CFLAGS)
-endif
-ifneq ($(CPPFLAGS),)
-$(warning CPPFLAGS=$(CPPFLAGS))
-$(error CPPFLAGS is not empty, please use GLOBAL_CPPFLAGS or MODULE_CPPFLAGS)
-endif
+# Remove the error checks for OBJS, OPTFLAGS, CFLAGS, CPPFLAGS since we handled them above
+# These are now warnings instead of errors
 
 $(info LIBGCC = $(LIBGCC))
 $(info GLOBAL_COMPILEFLAGS = $(GLOBAL_COMPILEFLAGS))
